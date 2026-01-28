@@ -338,11 +338,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const sharedEditorStyles: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
     fontSize: '14px',
-    lineHeight: '21px', // Exact 1.5 line height (14 * 1.5)
-    padding: '16px', // Standard padding
-    paddingBottom: '150px', // Extra scrolling space
-    border: 'none',
-    margin: 0,
+    lineHeight: '21px',
+    paddingTop: '20px',
+    paddingBottom: '20px',
+    paddingLeft: '20px',  // Increased to prevent left-side cutoff
+    paddingRight: '20px',
+    border: '0',
+    margin: '0',
+    outline: 'none',
     whiteSpace: 'pre',
     wordWrap: 'normal',
     overflowWrap: 'normal',
@@ -351,6 +354,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     fontVariantLigatures: 'none',
     width: '100%',
     height: '100%',
+    backgroundColor: 'transparent',
   };
 
   return (
@@ -379,7 +383,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
       <div className="relative flex-1 overflow-hidden" style={{ cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
         {/* Line Numbers Gutter */}
-        <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '21px', paddingTop: '16px' }}>
+        <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '21px', paddingTop: '20px' }}>
            {code.split('\n').map((_, i) => <div key={i}>{i+1}</div>)}
         </div>
 
@@ -397,18 +401,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
           style={{ 
             ...sharedEditorStyles,
             color: 'transparent',
-            background: 'transparent',
             caretColor: 'white',
+            overflow: 'auto', // textarea handles scroll
           }}
           disabled={readOnly}
         />
         <pre
           ref={preRef}
           aria-hidden="true"
-          className={`absolute top-0 left-0 pointer-events-none z-0 language-${language}`}
+          className={`absolute top-0 left-0 pointer-events-none z-0 language-${language} m-0 border-0`}
           style={{ 
             ...sharedEditorStyles,
-            overflow: 'hidden' // Scrolling handled by textarea via sync
+            overflow: 'hidden' // pre follows textarea
           }}
         >
           {code}
