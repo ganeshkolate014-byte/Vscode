@@ -370,18 +370,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
             className="relative min-h-full" 
             style={{ width: 'fit-content', minWidth: '100%' }}
         >
-            {/* Indent Guides Layer: Renders only if charSize is calculated */}
-            {charSize.width > 0 && (
-                <div 
-                    className="absolute inset-0 pointer-events-none z-0"
-                    style={{
-                        paddingLeft: '20px',
-                        backgroundSize: `${charSize.width * 2}px 100%`, // 2 spaces per indentation
-                        backgroundImage: `linear-gradient(to right, #303031 1px, transparent 1px)`
-                    }}
-                />
-            )}
-
             {/* Gutter */}
             <div className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-5 pr-2 text-right select-none z-10 hidden sm:block">
             {code.split('\n').map((_, i) => <div key={i} style={{height: '21px'}}>{i+1}</div>)}
