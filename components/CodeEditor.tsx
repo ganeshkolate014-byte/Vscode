@@ -20,7 +20,7 @@ interface CodeEditorProps {
 const SuggestionIcon = ({ type, label }: { type: string, label: string }) => {
     if (label === 'AI Suggestion') return <Bot size={14} className="text-purple-400" />;
     if (type === 'tag') return <Code size={14} className="text-blue-400" />;
-    if (type === 'snippet') return <Box size={14} className="text-white" />;
+    if (type === 'snippet') return <Box size={14} className="text-yellow-400" />;
     if (type === 'emmet') return <Zap size={14} className="text-green-400" />;
     if (type === 'keyword') return <Box size={14} className="text-pink-400" />;
     if (type === 'property') return <Hash size={14} className="text-blue-300" />;
@@ -112,51 +112,59 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     // Clear existing timer
     if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
 
-    // 1. Check for Emmet (Only in HTML)
-    if (language === 'html') {
-        const potentialAbbr = extractAbbreviation(textBeforeCursor);
-        const emmetResult = expandAbbreviation(potentialAbbr);
-        
-        if (emmetResult) {
-            setSuggestions([{
-                label: potentialAbbr,
-                value: emmetResult,
-                type: 'emmet',
-                detail: 'Emmet Abbreviation'
-            }]);
-            return; 
-        }
-    }
-
-    // 2. Standard Autocomplete
+    let newSuggestions: Suggestion[] = [];
     const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
     const currentWord = words[words.length - 1];
 
     if (currentWord.length > 0) {
-      let source: Suggestion[] = [];
-      if (language === 'html') source = HTML_TAGS;
-      if (language === 'css') source = CSS_PROPS;
-      if (language === 'javascript') source = JS_KEYWORDS;
+        // 1. Emmet (HTML only)
+        if (language === 'html') {
+            const potentialAbbr = extractAbbreviation(textBeforeCursor);
+            if (potentialAbbr && potentialAbbr.length > 0) {
+                const emmetResult = expandAbbreviation(potentialAbbr);
+                if (emmetResult) {
+                    newSuggestions.push({
+                        label: potentialAbbr,
+                        value: emmetResult,
+                        type: 'emmet',
+                        detail: 'Emmet Abbreviation'
+                    });
+                }
+            }
+        }
 
-      const matches = source.filter(s => s.label.toLowerCase().startsWith(currentWord.toLowerCase()));
-      setSuggestions(matches);
+        // 2. Standard Suggestions
+        let source: Suggestion[] = [];
+        if (language === 'html') source = HTML_TAGS;
+        if (language === 'css') source = CSS_PROPS;
+        if (language === 'javascript') source = JS_KEYWORDS;
+
+        const matches = source.filter(s => s.label.toLowerCase().startsWith(currentWord.toLowerCase()));
+        
+        // Merge without duplicates (simple check based on label)
+        matches.forEach(m => {
+            if (!newSuggestions.find(s => s.label === m.label && s.type === m.type)) {
+                newSuggestions.push(m);
+            }
+        });
+    }
+
+    if (newSuggestions.length > 0) {
+        setSuggestions(newSuggestions);
     } else {
-      setSuggestions([]);
-      
-      // 3. Passive AI Suggestion if user stops typing for 1.5s
-      if (!readOnly && val.trim().length > 10) {
-          const timer = setTimeout(() => {
-              triggerAiSuggestion(val, cursorPos);
-          }, 1500);
-          setAutoSuggestTimer(timer);
-      }
+        setSuggestions([]);
+        // 3. Passive AI Suggestion if user stops typing for 1.5s
+        if (!readOnly && val.trim().length > 10) {
+            const timer = setTimeout(() => {
+                triggerAiSuggestion(val, cursorPos);
+            }, 1500);
+            setAutoSuggestTimer(timer);
+        }
     }
   };
 
   const triggerAiSuggestion = async (currentVal: string, cursor: number) => {
       const requestId = activeRequestRef.current;
-      
-      // Don't trigger if cursor moved away in the meantime
       if (textareaRef.current?.selectionStart !== cursor) return;
 
       setIsAiLoading(true);
@@ -164,11 +172,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       
       try {
         const completion = await completeCode(textBefore, language);
-        
-        if (requestId !== activeRequestRef.current) {
-            setIsAiLoading(false);
-            return;
-        }
+        if (requestId !== activeRequestRef.current) return;
 
         if (completion && completion.trim().length > 0) {
             setSuggestions([{
@@ -181,9 +185,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       } catch (e) {
           // ignore
       } finally {
-          if (requestId === activeRequestRef.current) {
-             setIsAiLoading(false);
-          }
+          if (requestId === activeRequestRef.current) setIsAiLoading(false);
       }
   };
 
@@ -259,7 +261,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         setSuggestions([]);
         nextCursorPosRef.current = newCursorPos;
     }
-    
     textareaRef.current.focus();
   };
 
@@ -269,7 +270,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     const val = textareaRef.current.value;
     const cursorPos = textareaRef.current.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
-    
     activeRequestRef.current++;
 
     try {
@@ -371,31 +371,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
   return (
     <div className="relative w-full h-full flex flex-col bg-vscode-bg">
-      {/* Suggestions Widget (Vertical List anchored to bottom left) */}
-      {(suggestions.length > 0) && (
-        <div className="absolute bottom-12 left-2 z-50 w-72 max-h-60 overflow-y-auto bg-vscode-widget border border-vscode-activity shadow-[0_8px_16px_rgba(0,0,0,0.5)] rounded-md flex flex-col">
-          {suggestions.map((s, idx) => (
-            <button
-              key={idx}
-              onClick={() => insertSuggestion(s)}
-              className={`flex items-center justify-between px-3 py-2 text-sm border-b border-vscode-activity/30 last:border-0 hover:bg-vscode-hover transition-colors text-left ${idx === 0 ? 'bg-vscode-activity/50' : ''}`}
-            >
-               <div className="flex items-center gap-3 overflow-hidden">
-                 <span className="shrink-0"><SuggestionIcon type={s.type} label={s.label} /></span>
-                 <span className={`font-mono truncate ${s.label === 'AI Suggestion' ? 'text-purple-300' : 'text-vscode-fg'}`}>
-                   {s.label}
-                 </span>
-               </div>
-               
-               {/* Detail / Type */}
-               <span className="text-xs text-gray-500 font-sans italic shrink-0 ml-4">
-                   {s.detail || s.type}
-               </span>
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="relative flex-1 overflow-hidden" style={{ cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
         {/* Line Numbers Gutter */}
         <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '21px', paddingTop: '20px' }}>
@@ -433,6 +408,34 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
           {code}
         </pre>
       </div>
+
+       {/* Suggestions List - Anchored to bottom, above toolbar */}
+       {(suggestions.length > 0) && (
+        <div className="absolute bottom-12 left-0 w-full max-h-56 overflow-y-auto bg-vscode-widget border-t border-vscode-activity shadow-[0_-8px_20px_rgba(0,0,0,0.5)] z-50 flex flex-col font-sans">
+          {suggestions.map((s, idx) => (
+            <button
+              key={idx}
+              onClick={() => insertSuggestion(s)}
+              className={`flex items-center justify-between px-4 py-2.5 text-sm border-b border-vscode-activity/30 last:border-0 active:bg-vscode-accent/20 hover:bg-vscode-hover transition-colors text-left ${idx === 0 ? 'bg-vscode-activity' : ''}`}
+            >
+               <div className="flex items-center gap-3 overflow-hidden flex-1">
+                 <span className="shrink-0 flex items-center justify-center w-5">
+                    <SuggestionIcon type={s.type} label={s.label} />
+                 </span>
+                 <div className="flex flex-col truncate">
+                    <span className={`font-mono text-[14px] leading-tight ${s.label === 'AI Suggestion' ? 'text-purple-300' : 'text-blue-400 font-medium'}`}>
+                        {s.label}
+                    </span>
+                 </div>
+               </div>
+               
+               <span className="text-[11px] text-gray-500 italic ml-4 shrink-0 lowercase">
+                   {s.detail ? s.detail.replace(' Abbreviation', '') : s.type}
+               </span>
+            </button>
+          ))}
+        </div>
+      )}
        
        {/* Mobile Toolbar */}
        {!readOnly && (

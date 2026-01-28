@@ -55,6 +55,15 @@
         background: #4f4f4f;
       }
       
+      /* Utility to hide scrollbar but keep functionality */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      
       /* Editor specific overrides */
       html {
         -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
