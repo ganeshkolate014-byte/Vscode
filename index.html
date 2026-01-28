@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0 />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>DroidCoder AI</title>
     <!-- Tailwind CDN is kept for simplicity, though standard projects usually install it via PostCSS. 
          Keeping CDN ensures your existing styles work immediately without extra CSS file setup. -->
@@ -56,6 +56,20 @@
       }
       
       /* Editor specific overrides */
+      html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        /* Prevent bounce effect on iOS and ensure full height on Android by locking to viewport */
+        position: fixed; 
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+
       body {
         font-family: 'Segoe UI', Roboto, sans-serif;
         overscroll-behavior: none;
@@ -84,7 +98,7 @@
 }
 </script>
 </head>
-  <body class="bg-vscode-bg text-vscode-fg overflow-hidden h-screen w-screen selection:bg-vscode-accent selection:text-white">
+  <body class="bg-vscode-bg text-vscode-fg selection:bg-vscode-accent selection:text-white">
     <div id="root" class="h-full w-full"></div>
     <!-- Vite Entry Point -->
     <script type="module" src="/index.tsx"></script>
