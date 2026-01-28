@@ -72,15 +72,18 @@ export default function App() {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   useEffect(() => {
+    let timeoutId: any;
     const handleResize = () => {
-      // Use visualViewport if available for precise keyboard handling
-      if (window.visualViewport) {
-        setViewportHeight(`${window.visualViewport.height}px`);
-        // If height is significantly smaller than screen height, keyboard is likely open
-        setIsKeyboardOpen(window.visualViewport.height < window.screen.height * 0.75);
-      } else {
-        setViewportHeight(`${window.innerHeight}px`);
-      }
+       if (timeoutId) clearTimeout(timeoutId);
+       timeoutId = setTimeout(() => {
+            // Use visualViewport if available for precise keyboard handling
+            if (window.visualViewport) {
+                setViewportHeight(`${window.visualViewport.height}px`);
+                setIsKeyboardOpen(window.visualViewport.height < window.screen.height * 0.75);
+            } else {
+                setViewportHeight(`${window.innerHeight}px`);
+            }
+       }, 100);
     };
 
     // Initial set
@@ -93,6 +96,7 @@ export default function App() {
     return () => {
       window.visualViewport?.removeEventListener('resize', handleResize);
       window.removeEventListener('resize', handleResize);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 

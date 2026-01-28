@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-css';
@@ -36,34 +36,43 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
 
-  // 1. Measure Character Size accurately after font load
-  useEffect(() => {
-      const measure = () => {
-          const span = document.createElement('span');
-          span.style.fontFamily = '"Fira Code", monospace';
-          span.style.fontSize = '14px';
-          span.style.visibility = 'hidden';
-          span.style.position = 'absolute';
-          span.textContent = 'M'; 
-          document.body.appendChild(span);
-          const rect = span.getBoundingClientRect();
-          // Fira Code is monospace. Height usually ~21px for 14px font with normal line-height
-          setCharSize({ width: rect.width, height: 21 });
-          document.body.removeChild(span);
-      };
+  // 1. Measure Character Size accurately
+  const measureChar = () => {
+      const span = document.createElement('span');
+      span.style.fontFamily = '"Fira Code", monospace';
+      span.style.fontSize = '14px';
+      span.style.lineHeight = '21px'; 
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.textContent = 'M'; 
+      document.body.appendChild(span);
+      const rect = span.getBoundingClientRect();
+      setCharSize({ width: rect.width, height: 21 }); 
+      document.body.removeChild(span);
+  };
 
-      measure();
-      // Ensure we measure again after fonts are definitely loaded
+  useEffect(() => {
+      measureChar();
       if (document.fonts) {
-          document.fonts.ready.then(measure);
+          document.fonts.ready.then(measureChar);
       }
+      window.addEventListener('resize', measureChar);
+      return () => window.removeEventListener('resize', measureChar);
   }, []);
 
-  // Syntax Highlighting
-  useEffect(() => {
-    if (preRef.current) {
-      Prism.highlightElement(preRef.current);
-    }
+  // SAFE SYNTAX HIGHLIGHTING:
+  // Instead of letting Prism modify the DOM node that React manages (which causes crashes),
+  // we generate the HTML string in memory and use dangerouslySetInnerHTML.
+  const highlightedCode = useMemo(() => {
+      try {
+          const grammar = Prism.languages[language] || Prism.languages.html;
+          // Guard against empty code specifically
+          if (!code) return '<br />';
+          return Prism.highlight(code, grammar, language) + '<br />';
+      } catch (e) {
+          // Fallback if Prism fails
+          return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '<br />';
+      }
   }, [code, language]);
 
   // Cursor Auto-Scroll & Focus
@@ -72,6 +81,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const pos = nextCursorPosRef.current;
       textareaRef.current.setSelectionRange(pos, pos);
       nextCursorPosRef.current = null;
+      // Scroll cursor into view logic
+      ensureCursorVisible();
       updateCursorPosition();
     }
   }, [code]);
@@ -85,6 +96,29 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
      }
   }, [code]);
 
+  const ensureCursorVisible = () => {
+    if (!textareaRef.current || !containerRef.current) return;
+    
+    // We calculate position and scroll container.
+    const { selectionEnd, value } = textareaRef.current;
+    const textBefore = value.substring(0, selectionEnd);
+    const lines = textBefore.split('\n');
+    const lineNo = lines.length;
+    
+    // Top position of the line in pixels
+    const cursorTop = (lineNo - 1) * 21 + 20; // 20px padding
+    const cursorBottom = cursorTop + 21;
+    
+    const container = containerRef.current;
+    const { scrollTop, clientHeight } = container;
+    
+    if (cursorTop < scrollTop) {
+        container.scrollTop = cursorTop - 20;
+    } else if (cursorBottom > scrollTop + clientHeight - 40) { // 40px buffer for toolbar
+        container.scrollTop = cursorBottom - clientHeight + 40;
+    }
+  };
+
   const updateCursorPosition = () => {
       if (!textareaRef.current || charSize.width === 0) return;
       
@@ -95,19 +129,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const row = lines.length; 
       const col = lines[lines.length - 1].length;
 
-      // Coordinates relative to the CONTENT (not the viewport)
-      // We add padding (20px)
-      const top = (row * charSize.height) - charSize.height + 20; 
+      const top = (row * 21) - 21 + 20; // 21px line height, 20px padding
       const left = (col * charSize.width) + 20;
       
       setCursorXY({ top, left });
 
-      // Determine placement based on visibility in container
       if (containerRef.current) {
          const container = containerRef.current;
-         // Relative position of cursor in viewport
          const cursorVisualTop = top - container.scrollTop;
-         if (cursorVisualTop > container.clientHeight - 200) {
+         // If cursor is low in the viewport, show suggestions above
+         if (cursorVisualTop > container.clientHeight / 2) {
              setSuggestionPlacement('top');
          } else {
              setSuggestionPlacement('bottom');
@@ -125,8 +156,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     const cursorPos = e.target.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
     
-    // Defer cursor update slightly to ensure layout is stable? No, immediate is better.
     updateCursorPosition();
+    ensureCursorVisible();
 
     let newSuggestions: Suggestion[] = [];
     const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
@@ -289,6 +320,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
       onChange(newValue);
       nextCursorPosRef.current = selectionStart + insertion.length;
+      // Scroll will happen in effect
     }
   };
 
@@ -324,7 +356,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const commonStyle: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
     fontSize: '14px',
-    lineHeight: '21px',
+    lineHeight: '21px', // Fixed line height is crucial
     padding: '20px',
     margin: 0,
     border: 0,
@@ -332,6 +364,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     wordWrap: 'normal',
     overflowWrap: 'normal',
     tabSize: 2,
+    boxSizing: 'border-box'
   };
 
   return (
@@ -341,57 +374,57 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         className="relative flex-1 overflow-auto bg-vscode-bg scroll-smooth" 
         onClick={() => textareaRef.current?.focus()}
       >
-        <div className="min-w-full min-h-full relative inline-block">
-            {/* Gutter - Only on Desktop for now to save space on mobile */}
+        <div 
+            className="relative min-h-full" 
+            style={{ width: 'fit-content', minWidth: '100%' }}
+        >
+            {/* Gutter */}
             <div className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-5 pr-2 text-right select-none z-10 hidden sm:block">
             {code.split('\n').map((_, i) => <div key={i} style={{height: '21px'}}>{i+1}</div>)}
             </div>
 
-            {/* PRE: Handles visual sizing and highlighting */}
+            {/* PRE: Handles visual sizing and highlighting via dangerouslySetInnerHTML */}
             <pre
-            ref={preRef}
-            aria-hidden="true"
-            className={`pointer-events-none language-${language} m-0 border-0`}
-            style={{ 
-                ...commonStyle, 
-                minHeight: '100%',
-                paddingBottom: '150px' // Extra space for keyboard scroll
-            }}
-            >
-            {code}
-            {/* Trailing break to ensure empty last lines are rendered with height */}
-            <br /> 
-            </pre>
+                ref={preRef}
+                aria-hidden="true"
+                className={`pointer-events-none language-${language} m-0 border-0`}
+                style={{ 
+                    ...commonStyle, 
+                    minHeight: '100%',
+                    paddingBottom: '250px', 
+                }}
+                dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            />
 
             {/* TEXTAREA: Handles input and cursor */}
             <textarea
-            ref={textareaRef}
-            value={code}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            onClick={updateCursorPosition}
-            onKeyUp={updateCursorPosition} // Update on arrow keys
-            spellCheck={false}
-            autoCorrect="off"
-            autoCapitalize="none"
-            autoComplete="off"
-            className="absolute inset-0 w-full h-full overflow-hidden resize-none outline-none z-0 text-transparent bg-transparent caret-white"
-            style={{ 
-                ...commonStyle,
-                color: 'transparent',
-                paddingBottom: '150px' 
-            }}
-            disabled={readOnly}
+                ref={textareaRef}
+                value={code}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                onClick={updateCursorPosition}
+                onKeyUp={updateCursorPosition} 
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="none"
+                autoComplete="off"
+                className="absolute inset-0 w-full h-full overflow-hidden resize-none outline-none z-0 text-transparent bg-transparent caret-white"
+                style={{ 
+                    ...commonStyle,
+                    color: 'transparent',
+                    paddingBottom: '250px' 
+                }}
+                disabled={readOnly}
             />
 
-            {/* Suggestions - Positioned absolutely within the scrolling container */}
+            {/* Suggestions */}
             {(suggestions.length > 0) && (
                 <div 
                     className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm flex flex-col min-w-[200px] max-w-[300px] max-h-48 overflow-y-auto"
                     style={{
                         left: cursorXY.left,
                         ...(suggestionPlacement === 'top' 
-                            ? { bottom: `calc(100% - ${cursorXY.top}px + 5px)` } // +5px buffer
+                            ? { bottom: `calc(100% - ${cursorXY.top}px + 5px)` }
                             : { top: cursorXY.top + 21 + 5 } 
                         )
                     }}
@@ -422,7 +455,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
            <MobileToolbar 
              onInsert={handleToolbarInsert}
              onTab={() => {
-                // Reuse existing tab logic 
                 const e = { preventDefault: () => {} } as any;
                 if (textareaRef.current) {
                      const { selectionStart, selectionEnd, value } = textareaRef.current;
