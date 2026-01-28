@@ -5,7 +5,7 @@ import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-markup'; 
 import { HTML_TAGS, CSS_PROPS, JS_KEYWORDS } from '../constants';
 import { Suggestion } from '../types';
-import { Sparkles, Zap, Bot } from 'lucide-react'; 
+import { Sparkles, Zap, Bot, Box, Code, Hash, Type } from 'lucide-react'; 
 import { completeCode } from '../services/geminiService';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { MobileToolbar } from './MobileToolbar';
@@ -16,6 +16,16 @@ interface CodeEditorProps {
   onChange: (newCode: string) => void;
   readOnly?: boolean;
 }
+
+const SuggestionIcon = ({ type, label }: { type: string, label: string }) => {
+    if (label === 'AI Suggestion') return <Bot size={14} className="text-purple-400" />;
+    if (type === 'tag') return <Code size={14} className="text-blue-400" />;
+    if (type === 'snippet') return <Box size={14} className="text-white" />;
+    if (type === 'emmet') return <Zap size={14} className="text-green-400" />;
+    if (type === 'keyword') return <Box size={14} className="text-pink-400" />;
+    if (type === 'property') return <Hash size={14} className="text-blue-300" />;
+    return <Type size={14} className="text-gray-400" />;
+};
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, readOnly = false }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -109,9 +119,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         
         if (emmetResult) {
             setSuggestions([{
-                label: `${potentialAbbr} → Emmet`,
+                label: potentialAbbr,
                 value: emmetResult,
-                type: 'emmet'
+                type: 'emmet',
+                detail: 'Emmet Abbreviation'
             }]);
             return; 
         }
@@ -163,7 +174,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
             setSuggestions([{
                 label: "AI Suggestion",
                 value: completion,
-                type: 'snippet'
+                type: 'snippet',
+                detail: 'Gemini Auto-complete'
             }]);
         }
       } catch (e) {
@@ -341,7 +353,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     lineHeight: '21px',
     paddingTop: '20px',
     paddingBottom: '20px',
-    paddingLeft: '20px',  // Increased to prevent left-side cutoff
+    paddingLeft: '20px',  
     paddingRight: '20px',
     border: '0',
     margin: '0',
@@ -359,23 +371,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
   return (
     <div className="relative w-full h-full flex flex-col bg-vscode-bg">
-      {/* Suggestions Widget */}
+      {/* Suggestions Widget (Vertical List anchored to bottom left) */}
       {(suggestions.length > 0) && (
-        <div className="absolute bottom-12 left-0 right-0 z-50 bg-vscode-widget flex overflow-x-auto p-2 gap-2 border-t border-vscode-activity no-scrollbar shadow-[0_-4px_15px_rgba(0,0,0,0.5)]">
+        <div className="absolute bottom-12 left-2 z-50 w-72 max-h-60 overflow-y-auto bg-vscode-widget border border-vscode-activity shadow-[0_8px_16px_rgba(0,0,0,0.5)] rounded-md flex flex-col">
           {suggestions.map((s, idx) => (
             <button
               key={idx}
               onClick={() => insertSuggestion(s)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-sm text-sm whitespace-nowrap border ${s.label === 'AI Suggestion' ? 'bg-purple-900 border-purple-500 text-white animate-pulse' : s.type === 'emmet' ? 'bg-indigo-900 border-indigo-500 text-white' : 'bg-vscode-input border-transparent text-vscode-fg hover:bg-vscode-accent'}`}
+              className={`flex items-center justify-between px-3 py-2 text-sm border-b border-vscode-activity/30 last:border-0 hover:bg-vscode-hover transition-colors text-left ${idx === 0 ? 'bg-vscode-activity/50' : ''}`}
             >
-               <span className={`text-xs ${s.label === 'AI Suggestion' ? 'text-purple-300' : s.type === 'tag' ? 'text-orange-400' : s.type === 'property' ? 'text-blue-300' : s.type === 'emmet' ? 'text-green-400' : 'text-yellow-400'}`}>
-                 {s.label === 'AI Suggestion' ? <Bot size={14} /> : s.type === 'tag' ? '<>' : s.type === 'property' ? '#' : s.type === 'emmet' ? <Zap size={14} className="fill-green-400" /> : 'abc'}
+               <div className="flex items-center gap-3 overflow-hidden">
+                 <span className="shrink-0"><SuggestionIcon type={s.type} label={s.label} /></span>
+                 <span className={`font-mono truncate ${s.label === 'AI Suggestion' ? 'text-purple-300' : 'text-vscode-fg'}`}>
+                   {s.label}
+                 </span>
+               </div>
+               
+               {/* Detail / Type */}
+               <span className="text-xs text-gray-500 font-sans italic shrink-0 ml-4">
+                   {s.detail || s.type}
                </span>
-               {s.label === 'AI Suggestion' ? (
-                   <span className="font-mono italic opacity-90 truncate max-w-[200px]">{s.value.replace(/\n/g, '↵')}</span>
-               ) : (
-                   <span className="font-mono">{s.label}</span>
-               )}
             </button>
           ))}
         </div>

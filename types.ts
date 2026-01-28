@@ -15,6 +15,7 @@ export interface Suggestion {
   label: string;
   value: string;
   type: 'tag' | 'property' | 'keyword' | 'snippet' | 'emmet';
+  detail?: string;
 }
 
 export interface ChatMessage {
