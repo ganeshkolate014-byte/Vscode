@@ -94,6 +94,17 @@
         font-family: 'Fira Code', monospace !important;
         font-variant-ligatures: none; /* Helps alignment */
       }
+
+      /* FIX: Override Prism Theme Background to transparent. 
+         This prevents the 'split screen' look where the code area has a slightly different 
+         grey background than the editor container. */
+      code[class*="language-"],
+      pre[class*="language-"] {
+        background-color: transparent !important;
+        text-shadow: none !important;
+        box-shadow: none !important;
+      }
+      
       .no-tap-highlight {
         -webkit-tap-highlight-color: transparent;
       }
