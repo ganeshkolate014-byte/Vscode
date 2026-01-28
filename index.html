@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>DroidCoder AI</title>
+    <!-- Tailwind CDN is kept for simplicity, though standard projects usually install it via PostCSS. 
+         Keeping CDN ensures your existing styles work immediately without extra CSS file setup. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              vscode: {
+                bg: '#1e1e1e',          // Main Editor Background
+                sidebar: '#252526',     // Side Bar Background
+                activity: '#333333',    // Activity Bar Background
+                tabInactive: '#2d2d2d', // Inactive Tab Background
+                tabActive: '#1e1e1e',   // Active Tab Background
+                fg: '#cccccc',          // Main Text Color
+                border: '#454545',      // Borders
+                accent: '#007acc',      // Focus/Status Bar Blue
+                hover: '#2a2d2e',       // List Hover
+                widget: '#252526',      // Dropdowns/Widgets
+                input: '#3c3c3c',       // Inputs
+              }
+            },
+            fontFamily: {
+              mono: ['"Fira Code"', 'monospace'],
+              sans: ['"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif']
+            }
+          }
+        }
+      }
+    </script>
+    <!-- Import Fira Code for perfect alignment -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- PrismJS for Syntax Highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <style>
+      /* Custom Scrollbar to match VS Code */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1e1e1e;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #424242;
+        border-radius: 0px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #4f4f4f;
+      }
+      
+      /* Editor specific overrides */
+      body {
+        font-family: 'Segoe UI', Roboto, sans-serif;
+        overscroll-behavior: none;
+      }
+      code, pre, textarea.code-input {
+        font-family: 'Fira Code', monospace !important;
+        font-variant-ligatures: none; /* Helps alignment */
+      }
+      .no-tap-highlight {
+        -webkit-tap-highlight-color: transparent;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "prismjs/": "https://esm.sh/prismjs@^1.30.0/",
+    "prismjs": "https://esm.sh/prismjs@^1.30.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-vscode-bg text-vscode-fg overflow-hidden h-screen w-screen selection:bg-vscode-accent selection:text-white">
+    <div id="root" class="h-full w-full"></div>
+    <!-- Vite Entry Point -->
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

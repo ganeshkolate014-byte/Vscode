@@ -1,0 +1,5 @@
+{
+  "name": "DroidCoder AI",
+  "description": "A mobile-first, AI-powered web development IDE with live preview, syntax highlighting, and intelligent code suggestions.",
+  "requestFramePermissions": []
+}
