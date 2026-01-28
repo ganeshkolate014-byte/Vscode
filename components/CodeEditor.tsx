@@ -18,7 +18,6 @@ interface CodeEditorProps {
 }
 
 const SuggestionIcon = ({ type, label }: { type: string, label: string }) => {
-    // Icons are kept for fallback, but main UI mimics the text-based look of the provided image
     if (label === 'AI Suggestion') return <Bot size={14} className="text-purple-400" />;
     return null; 
 };
@@ -27,6 +26,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [cursorXY, setCursorXY] = useState({ top: 0, left: 0 });
+  const [suggestionPlacement, setSuggestionPlacement] = useState<'top' | 'bottom'>('bottom');
   const [charSize, setCharSize] = useState({ width: 0, height: 21 });
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -50,7 +50,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       span.textContent = 'M'; // Wide character
       document.body.appendChild(span);
       const rect = span.getBoundingClientRect();
-      // Fira Code is monospace, so width is constant. Height is line-height (21px)
       setCharSize({ width: rect.width, height: 21 });
       document.body.removeChild(span);
   }, []);
@@ -60,7 +59,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     if (textareaRef.current && preRef.current) {
       preRef.current.scrollTop = textareaRef.current.scrollTop;
       preRef.current.scrollLeft = textareaRef.current.scrollLeft;
-      // Re-calculate cursor position on scroll so suggestions move with text
       updateCursorPosition();
     }
   };
@@ -94,7 +92,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const updateCursorPosition = () => {
       if (!textareaRef.current || charSize.width === 0) return;
       
-      const { selectionEnd, value, scrollTop, scrollLeft } = textareaRef.current;
+      const { selectionEnd, value, scrollTop, scrollLeft, clientHeight } = textareaRef.current;
       
       // Calculate row and column
       const textUpToCursor = value.substring(0, selectionEnd);
@@ -104,11 +102,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
       // Calculate pixel coordinates
       // Padding top/left is 20px (from sharedStyles)
-      // We subtract scroll to keep it relative to the viewport/container
       const top = (row * charSize.height) - scrollTop + 20; 
       const left = (col * charSize.width) - scrollLeft + 20;
       
       setCursorXY({ top, left });
+
+      // Determine placement (Flip if close to bottom)
+      // We assume suggestion box is approx 200px max
+      if (top > clientHeight - 180) {
+          setSuggestionPlacement('top');
+      } else {
+          setSuggestionPlacement('bottom');
+      }
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -135,15 +140,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
             if (potentialAbbr && potentialAbbr.length > 0) {
                 const emmetResult = expandAbbreviation(potentialAbbr);
                 if (emmetResult) {
-                     // Add standard emmet
                      newSuggestions.push({
                         label: potentialAbbr,
                         value: emmetResult,
                         type: 'emmet',
                         detail: 'Emmet Abbreviation'
                      });
-                     
-                     // Add variations if needed or just snippets that match
                 }
             }
         }
@@ -176,7 +178,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   };
 
   const triggerAiSuggestion = async (currentVal: string, cursor: number) => {
-      // ... same AI logic ...
       const requestId = activeRequestRef.current;
       if (textareaRef.current?.selectionStart !== cursor) return;
 
@@ -210,7 +211,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     let before = "";
     let after = "";
     
-    // Deletion logic based on type
     let charsToDelete = 0;
     if (suggestion.type === 'emmet') {
          const abbr = extractAbbreviation(textBeforeCursor);
@@ -226,7 +226,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     before = val.substring(0, cursorPos - charsToDelete);
     after = val.substring(cursorPos);
 
-    // Auto-close tag fix
     if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
@@ -252,7 +251,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Navigate suggestions with arrows if visible
     if (suggestions.length > 0) {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -276,7 +274,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         }
     }
 
-    // Normal editing keys
     const { selectionStart, selectionEnd, value } = e.currentTarget;
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -298,7 +295,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     }
   };
 
-  // Mobile Toolbar handlers
   const handleToolbarInsert = (text: string) => {
       if (!textareaRef.current) return;
       const val = textareaRef.current.value;
@@ -306,14 +302,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const end = textareaRef.current.selectionEnd;
       let insertion = text;
       let finalPos = start + text.length;
-      if (start !== end) { // Wrap selection
+      if (start !== end) { 
          const sel = val.substring(start, end);
          if (['"', "'", '(', '{', '['].includes(text)) {
             const closing = text === '(' ? ')' : text === '{' ? '}' : text === '[' ? ']' : text;
             insertion = text + sel + closing;
             finalPos = end + 2;
          }
-      } else { // Auto-close pair
+      } else {
           if (['(', '{', '['].includes(text)) {
               const closing = text === '(' ? ')' : text === '{' ? '}' : ']';
               insertion = text + closing;
@@ -328,13 +324,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       textareaRef.current.focus();
   };
 
-  // Shared Styles
   const sharedEditorStyles: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
     fontSize: '14px',
     lineHeight: '21px',
     paddingTop: '20px',
-    paddingBottom: '20px',
+    paddingBottom: '150px', // Extra padding at bottom to allow scrolling past keyboard/toolbar
     paddingLeft: '20px',  
     paddingRight: '20px',
     border: '0',
@@ -363,7 +358,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
-          onClick={updateCursorPosition} // Update cursor xy on click
+          onClick={updateCursorPosition}
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="none"
@@ -381,14 +376,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
           {code}
         </pre>
 
-        {/* Suggestion Dropdown - Absolute at Cursor Position */}
+        {/* Suggestion Dropdown */}
         {(suggestions.length > 0) && (
             <div 
-                className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm overflow-hidden flex flex-col min-w-[200px] max-w-[300px]"
+                className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm flex flex-col min-w-[200px] max-w-[300px] max-h-48 overflow-y-auto"
                 style={{
-                    top: cursorXY.top,
                     left: cursorXY.left,
-                    // If too close to bottom, logic could flip it, but for now strict compliance to 'below'
+                    // If 'top' placement, bottom is fixed at calculated position. 
+                    // If 'bottom' placement, top is fixed.
+                    ...(suggestionPlacement === 'top' 
+                        ? { bottom: `calc(100% - ${cursorXY.top}px)` } 
+                        : { top: cursorXY.top + 21 } // 21 is line height
+                    )
                 }}
             >
                 {suggestions.map((s, idx) => (
@@ -398,7 +397,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
                         className={`flex items-center justify-between px-3 py-1 cursor-pointer font-mono text-sm border-b border-[#333333] last:border-0 ${idx === selectedIdx ? 'bg-[#007acc] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'}`}
                     >
                         <div className="flex items-center gap-2 overflow-hidden">
-                            {/* Icon hidden to match image strictly text based, or keep minimal */}
                             {s.label === 'AI Suggestion' && <Bot size={12} />}
                             <span className={`truncate ${idx === selectedIdx ? 'text-white' : s.label === 'AI Suggestion' ? 'text-purple-400' : 'text-blue-400'}`}>
                                 {s.label}
@@ -418,7 +416,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
              onInsert={handleToolbarInsert}
              onTab={() => {
                 const e = { preventDefault: () => {} } as any;
-                // Reuse existing tab logic logic
                 if (textareaRef.current) {
                      const { selectionStart, selectionEnd, value } = textareaRef.current;
                      const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
