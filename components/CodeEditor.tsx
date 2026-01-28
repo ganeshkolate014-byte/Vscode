@@ -5,7 +5,7 @@ import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-markup'; 
 import { HTML_TAGS, CSS_PROPS, JS_KEYWORDS } from '../constants';
 import { Suggestion } from '../types';
-import { Sparkles, Zap, Bot, Box, Code, Hash, Type } from 'lucide-react'; 
+import { Sparkles, Zap, Bot, Box, Code, Hash, Type, ChevronRight } from 'lucide-react'; 
 import { completeCode } from '../services/geminiService';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { MobileToolbar } from './MobileToolbar';
@@ -18,17 +18,17 @@ interface CodeEditorProps {
 }
 
 const SuggestionIcon = ({ type, label }: { type: string, label: string }) => {
+    // Icons are kept for fallback, but main UI mimics the text-based look of the provided image
     if (label === 'AI Suggestion') return <Bot size={14} className="text-purple-400" />;
-    if (type === 'tag') return <Code size={14} className="text-blue-400" />;
-    if (type === 'snippet') return <Box size={14} className="text-yellow-400" />;
-    if (type === 'emmet') return <Zap size={14} className="text-green-400" />;
-    if (type === 'keyword') return <Box size={14} className="text-pink-400" />;
-    if (type === 'property') return <Hash size={14} className="text-blue-300" />;
-    return <Type size={14} className="text-gray-400" />;
+    return null; 
 };
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, readOnly = false }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [cursorXY, setCursorXY] = useState({ top: 0, left: 0 });
+  const [charSize, setCharSize] = useState({ width: 0, height: 21 });
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const nextCursorPosRef = useRef<number | null>(null); 
@@ -36,61 +36,53 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const [autoSuggestTimer, setAutoSuggestTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const activeRequestRef = useRef<number>(0);
   
-  // Simple History Stack for custom Undo
+  // History tracking
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
+
+  // 1. Measure Character Size for precise cursor positioning
+  useEffect(() => {
+      const span = document.createElement('span');
+      span.style.fontFamily = '"Fira Code", monospace';
+      span.style.fontSize = '14px';
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.textContent = 'M'; // Wide character
+      document.body.appendChild(span);
+      const rect = span.getBoundingClientRect();
+      // Fira Code is monospace, so width is constant. Height is line-height (21px)
+      setCharSize({ width: rect.width, height: 21 });
+      document.body.removeChild(span);
+  }, []);
 
   // Sync scroll exactly
   const handleScroll = () => {
     if (textareaRef.current && preRef.current) {
       preRef.current.scrollTop = textareaRef.current.scrollTop;
       preRef.current.scrollLeft = textareaRef.current.scrollLeft;
+      // Re-calculate cursor position on scroll so suggestions move with text
+      updateCursorPosition();
     }
   };
 
-  // Syntax Highlighting & Color Preview
+  // Syntax Highlighting
   useEffect(() => {
-    if (Prism.languages.css) {
-        Prism.languages.css['color-preview'] = {
-            pattern: /\b(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\((?:(?:\s*\d+\s*%?)\s*,){2}(?:\s*\d+\s*%?)\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\))\b/i,
-            alias: 'color-value'
-        };
-    }
-
-    const hookId = 'css-color-preview-hook';
-    // @ts-ignore
-    if (!window[hookId]) {
-        // @ts-ignore
-        window[hookId] = true;
-        
-        Prism.hooks.add('wrap', (env) => {
-            if (env.type === 'color-preview' || (env.type === 'color' && env.language === 'css')) {
-                env.attributes.style = `
-                    background-color: ${env.content}; 
-                    color: rgba(255,255,255,0.9); 
-                    text-shadow: 0px 0px 2px black, 0 0 1px black;
-                    border-radius: 2px;
-                    outline: 1px solid rgba(128,128,128,0.5);
-                `;
-            }
-        });
-    }
-
     if (preRef.current) {
       Prism.highlightElement(preRef.current);
     }
   }, [code, language]);
 
-  // Cursor Positioning Effect
+  // Cursor Auto-Scroll & Focus
   useLayoutEffect(() => {
     if (nextCursorPosRef.current !== null && textareaRef.current) {
       const pos = nextCursorPosRef.current;
       textareaRef.current.setSelectionRange(pos, pos);
       nextCursorPosRef.current = null;
+      updateCursorPosition();
     }
   }, [code]);
 
-  // History tracking
+  // History
   useEffect(() => {
      if (code !== historyRef.current[historyPointer.current]) {
          const nextPtr = historyPointer.current + 1;
@@ -99,41 +91,64 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
      }
   }, [code]);
 
+  const updateCursorPosition = () => {
+      if (!textareaRef.current || charSize.width === 0) return;
+      
+      const { selectionEnd, value, scrollTop, scrollLeft } = textareaRef.current;
+      
+      // Calculate row and column
+      const textUpToCursor = value.substring(0, selectionEnd);
+      const lines = textUpToCursor.split('\n');
+      const row = lines.length; 
+      const col = lines[lines.length - 1].length;
+
+      // Calculate pixel coordinates
+      // Padding top/left is 20px (from sharedStyles)
+      // We subtract scroll to keep it relative to the viewport/container
+      const top = (row * charSize.height) - scrollTop + 20; 
+      const left = (col * charSize.width) - scrollLeft + 20;
+      
+      setCursorXY({ top, left });
+  };
+
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     onChange(val);
-
-    // Invalidate pending AI requests
     activeRequestRef.current++;
+    
+    // Clear timer
+    if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
 
     const cursorPos = e.target.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
     
-    // Clear existing timer
-    if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
+    updateCursorPosition();
 
     let newSuggestions: Suggestion[] = [];
     const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
     const currentWord = words[words.length - 1];
 
     if (currentWord.length > 0) {
-        // 1. Emmet (HTML only)
+        // 1. Emmet
         if (language === 'html') {
             const potentialAbbr = extractAbbreviation(textBeforeCursor);
             if (potentialAbbr && potentialAbbr.length > 0) {
                 const emmetResult = expandAbbreviation(potentialAbbr);
                 if (emmetResult) {
-                    newSuggestions.push({
+                     // Add standard emmet
+                     newSuggestions.push({
                         label: potentialAbbr,
                         value: emmetResult,
                         type: 'emmet',
                         detail: 'Emmet Abbreviation'
-                    });
+                     });
+                     
+                     // Add variations if needed or just snippets that match
                 }
             }
         }
 
-        // 2. Standard Suggestions
+        // 2. Standard
         let source: Suggestion[] = [];
         if (language === 'html') source = HTML_TAGS;
         if (language === 'css') source = CSS_PROPS;
@@ -141,9 +156,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
         const matches = source.filter(s => s.label.toLowerCase().startsWith(currentWord.toLowerCase()));
         
-        // Merge without duplicates (simple check based on label)
         matches.forEach(m => {
-            if (!newSuggestions.find(s => s.label === m.label && s.type === m.type)) {
+            if (!newSuggestions.find(s => s.label === m.label)) {
                 newSuggestions.push(m);
             }
         });
@@ -151,19 +165,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
     if (newSuggestions.length > 0) {
         setSuggestions(newSuggestions);
+        setSelectedIdx(0);
     } else {
         setSuggestions([]);
-        // 3. Passive AI Suggestion if user stops typing for 1.5s
         if (!readOnly && val.trim().length > 10) {
-            const timer = setTimeout(() => {
-                triggerAiSuggestion(val, cursorPos);
-            }, 1500);
+            const timer = setTimeout(() => triggerAiSuggestion(val, cursorPos), 1500);
             setAutoSuggestTimer(timer);
         }
     }
   };
 
   const triggerAiSuggestion = async (currentVal: string, cursor: number) => {
+      // ... same AI logic ...
       const requestId = activeRequestRef.current;
       if (textareaRef.current?.selectionStart !== cursor) return;
 
@@ -181,42 +194,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
                 type: 'snippet',
                 detail: 'Gemini Auto-complete'
             }]);
+            updateCursorPosition();
         }
-      } catch (e) {
-          // ignore
-      } finally {
-          if (requestId === activeRequestRef.current) setIsAiLoading(false);
-      }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const { selectionStart, selectionEnd, value } = e.currentTarget;
-
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      handleTab();
-    } 
-    else if (e.key === 'Enter') {
-      e.preventDefault();
-      const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-      const currentLine = value.substring(lineStart, selectionStart);
-      const match = currentLine.match(/^\s*/);
-      const indent = match ? match[0] : '';
-      
-      let insertion = '\n' + indent;
-      if (/[:{(\[>]\s*$/.test(currentLine)) {
-         insertion += '  ';
-      }
-      
-      const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
-      onChange(newValue);
-      nextCursorPosRef.current = selectionStart + insertion.length;
-    }
+      } catch (e) { } 
+      finally { if (requestId === activeRequestRef.current) setIsAiLoading(false); }
   };
 
   const insertSuggestion = (suggestion: Suggestion) => {
     if (!textareaRef.current) return;
-    
     const val = textareaRef.current.value;
     const cursorPos = textareaRef.current.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
@@ -225,128 +210,125 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     let before = "";
     let after = "";
     
+    // Deletion logic based on type
+    let charsToDelete = 0;
     if (suggestion.type === 'emmet') {
          const abbr = extractAbbreviation(textBeforeCursor);
-         before = val.substring(0, cursorPos - abbr.length);
-         after = val.substring(cursorPos);
+         charsToDelete = abbr.length;
     } else if (suggestion.label === 'AI Suggestion') {
-         before = val.substring(0, cursorPos);
-         after = val.substring(cursorPos);
+         charsToDelete = 0;
     } else {
         const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
         const currentWord = words[words.length - 1];
-        before = val.substring(0, cursorPos - currentWord.length);
-        after = val.substring(cursorPos);
+        charsToDelete = currentWord.length;
     }
+    
+    before = val.substring(0, cursorPos - charsToDelete);
+    after = val.substring(cursorPos);
 
+    // Auto-close tag fix
     if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
-        if (lastOpenBracket !== -1) {
-            before = before.substring(0, lastOpenBracket);
-        }
+        if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
     }
     
     const cursorMarkerIndex = insertion.indexOf('$0');
+    let finalValue = "";
+    let newCursorPos = 0;
+
     if (cursorMarkerIndex !== -1) {
         const cleanInsertion = insertion.replace(/\$0/g, ''); 
-        const finalValue = before + cleanInsertion + after;
-        const newCursorPos = before.length + cursorMarkerIndex;
-        onChange(finalValue);
-        setSuggestions([]);
-        nextCursorPosRef.current = newCursorPos;
+        finalValue = before + cleanInsertion + after;
+        newCursorPos = before.length + cursorMarkerIndex;
     } else {
-        const finalValue = before + insertion + after;
-        const newCursorPos = before.length + insertion.length;
-        onChange(finalValue);
-        setSuggestions([]);
-        nextCursorPosRef.current = newCursorPos;
+        finalValue = before + insertion + after;
+        newCursorPos = before.length + insertion.length;
     }
-    textareaRef.current.focus();
-  };
-
-  const handleAiAutocomplete = async () => {
-    if (!textareaRef.current) return;
-    setIsAiLoading(true);
-    const val = textareaRef.current.value;
-    const cursorPos = textareaRef.current.selectionStart;
-    const textBeforeCursor = val.slice(0, cursorPos);
-    activeRequestRef.current++;
-
-    try {
-        const completion = await completeCode(textBeforeCursor, language);
-        if (completion) {
-            const before = val.substring(0, cursorPos);
-            const after = val.substring(cursorPos);
-            onChange(before + completion + after);
-            nextCursorPosRef.current = (before + completion).length;
-        }
-    } finally {
-        setIsAiLoading(false);
-    }
-  };
-
-  // Toolbar Handlers
-  const handleToolbarInsert = (text: string) => {
-    if (!textareaRef.current) return;
-    const val = textareaRef.current.value;
-    const start = textareaRef.current.selectionStart;
-    const end = textareaRef.current.selectionEnd;
     
-    let insertion = text;
-    let finalCursorPos = start + text.length;
+    onChange(finalValue);
+    setSuggestions([]);
+    nextCursorPosRef.current = newCursorPos;
+    textareaRef.current.focus();
+  };
 
-    if (start !== end) {
-        const selection = val.substring(start, end);
-        if (['"', "'", '`', '(', '{', '['].includes(text)) {
-           const closing = text === '(' ? ')' : text === '{' ? '}' : text === '[' ? ']' : text;
-           insertion = text + selection + closing;
-           finalCursorPos = end + 2; 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Navigate suggestions with arrows if visible
+    if (suggestions.length > 0) {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSelectedIdx(prev => (prev + 1) % suggestions.length);
+            return;
         }
-    } else {
-        if (['(', '{', '['].includes(text)) {
-            const closing = text === '(' ? ')' : text === '{' ? '}' : ']';
-            insertion = text + closing;
-            finalCursorPos = start + 1; 
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSelectedIdx(prev => (prev - 1 + suggestions.length) % suggestions.length);
+            return;
         }
-        else if (['"', "'", '`'].includes(text)) {
-             insertion = text + text;
-             finalCursorPos = start + 1;
+        if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault();
+            insertSuggestion(suggestions[selectedIdx]);
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setSuggestions([]);
+            return;
         }
     }
 
-    const newVal = val.substring(0, start) + insertion + val.substring(end);
-    onChange(newVal);
-    nextCursorPosRef.current = finalCursorPos;
-    textareaRef.current.focus();
+    // Normal editing keys
+    const { selectionStart, selectionEnd, value } = e.currentTarget;
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
+      onChange(newValue);
+      nextCursorPosRef.current = selectionStart + 2;
+    } 
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+      const currentLine = value.substring(lineStart, selectionStart);
+      const match = currentLine.match(/^\s*/);
+      const indent = match ? match[0] : '';
+      let insertion = '\n' + indent;
+      if (/[:{(\[>]\s*$/.test(currentLine)) insertion += '  ';
+      const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
+      onChange(newValue);
+      nextCursorPosRef.current = selectionStart + insertion.length;
+    }
   };
 
-  const handleTab = () => {
-    if (!textareaRef.current) return;
-    const { selectionStart, selectionEnd, value } = textareaRef.current;
-    const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
-    onChange(newValue);
-    nextCursorPosRef.current = selectionStart + 2;
-    textareaRef.current.focus();
-  };
-
-  const handleUndo = () => {
-      if (historyPointer.current > 0) {
-          historyPointer.current -= 1;
-          const prevCode = historyRef.current[historyPointer.current];
-          onChange(prevCode);
+  // Mobile Toolbar handlers
+  const handleToolbarInsert = (text: string) => {
+      if (!textareaRef.current) return;
+      const val = textareaRef.current.value;
+      const start = textareaRef.current.selectionStart;
+      const end = textareaRef.current.selectionEnd;
+      let insertion = text;
+      let finalPos = start + text.length;
+      if (start !== end) { // Wrap selection
+         const sel = val.substring(start, end);
+         if (['"', "'", '(', '{', '['].includes(text)) {
+            const closing = text === '(' ? ')' : text === '{' ? '}' : text === '[' ? ']' : text;
+            insertion = text + sel + closing;
+            finalPos = end + 2;
+         }
+      } else { // Auto-close pair
+          if (['(', '{', '['].includes(text)) {
+              const closing = text === '(' ? ')' : text === '{' ? '}' : ']';
+              insertion = text + closing;
+              finalPos = start + 1;
+          } else if (['"', "'", '`'].includes(text)) {
+              insertion = text + text;
+              finalPos = start + 1;
+          }
       }
-      textareaRef.current?.focus();
-  };
-  
-  const handleRedo = () => {
-      if (historyPointer.current < historyRef.current.length - 1) {
-          historyPointer.current += 1;
-          onChange(historyRef.current[historyPointer.current]);
-      }
-      textareaRef.current?.focus();
+      onChange(val.substring(0, start) + insertion + val.substring(end));
+      nextCursorPosRef.current = finalPos;
+      textareaRef.current.focus();
   };
 
-  // Explicit shared styles for exact alignment
+  // Shared Styles
   const sharedEditorStyles: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
     fontSize: '14px',
@@ -358,12 +340,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     border: '0',
     margin: '0',
     outline: 'none',
-    whiteSpace: 'pre',
+    whiteSpace: 'pre', 
     wordWrap: 'normal',
     overflowWrap: 'normal',
     tabSize: 2,
-    boxSizing: 'border-box',
-    fontVariantLigatures: 'none',
     width: '100%',
     height: '100%',
     backgroundColor: 'transparent',
@@ -372,7 +352,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   return (
     <div className="relative w-full h-full flex flex-col bg-vscode-bg">
       <div className="relative flex-1 overflow-hidden" style={{ cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
-        {/* Line Numbers Gutter */}
+        {/* Gutter */}
         <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '21px', paddingTop: '20px' }}>
            {code.split('\n').map((_, i) => <div key={i}>{i+1}</div>)}
         </div>
@@ -383,68 +363,87 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
+          onClick={updateCursorPosition} // Update cursor xy on click
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="none"
           autoComplete="off"
           className="absolute top-0 left-0 outline-none z-10 code-input resize-none"
-          style={{ 
-            ...sharedEditorStyles,
-            color: 'transparent',
-            caretColor: 'white',
-            overflow: 'auto', // textarea handles scroll
-          }}
+          style={{ ...sharedEditorStyles, color: 'transparent', caretColor: 'white', overflow: 'auto' }}
           disabled={readOnly}
         />
         <pre
           ref={preRef}
           aria-hidden="true"
           className={`absolute top-0 left-0 pointer-events-none z-0 language-${language} m-0 border-0`}
-          style={{ 
-            ...sharedEditorStyles,
-            overflow: 'hidden' // pre follows textarea
-          }}
+          style={{ ...sharedEditorStyles, overflow: 'hidden' }}
         >
           {code}
         </pre>
+
+        {/* Suggestion Dropdown - Absolute at Cursor Position */}
+        {(suggestions.length > 0) && (
+            <div 
+                className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm overflow-hidden flex flex-col min-w-[200px] max-w-[300px]"
+                style={{
+                    top: cursorXY.top,
+                    left: cursorXY.left,
+                    // If too close to bottom, logic could flip it, but for now strict compliance to 'below'
+                }}
+            >
+                {suggestions.map((s, idx) => (
+                    <div
+                        key={idx}
+                        onClick={() => insertSuggestion(s)}
+                        className={`flex items-center justify-between px-3 py-1 cursor-pointer font-mono text-sm border-b border-[#333333] last:border-0 ${idx === selectedIdx ? 'bg-[#007acc] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'}`}
+                    >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                            {/* Icon hidden to match image strictly text based, or keep minimal */}
+                            {s.label === 'AI Suggestion' && <Bot size={12} />}
+                            <span className={`truncate ${idx === selectedIdx ? 'text-white' : s.label === 'AI Suggestion' ? 'text-purple-400' : 'text-blue-400'}`}>
+                                {s.label}
+                            </span>
+                        </div>
+                        <span className={`text-xs ml-4 italic shrink-0 ${idx === selectedIdx ? 'text-white opacity-80' : 'text-gray-500'}`}>
+                            {s.detail ? s.detail.replace(' Abbreviation', '') : s.type}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        )}
       </div>
 
-       {/* Suggestions List - Anchored to bottom, above toolbar */}
-       {(suggestions.length > 0) && (
-        <div className="absolute bottom-12 left-0 w-full max-h-56 overflow-y-auto bg-vscode-widget border-t border-vscode-activity shadow-[0_-8px_20px_rgba(0,0,0,0.5)] z-50 flex flex-col font-sans">
-          {suggestions.map((s, idx) => (
-            <button
-              key={idx}
-              onClick={() => insertSuggestion(s)}
-              className={`flex items-center justify-between px-4 py-2.5 text-sm border-b border-vscode-activity/30 last:border-0 active:bg-vscode-accent/20 hover:bg-vscode-hover transition-colors text-left ${idx === 0 ? 'bg-vscode-activity' : ''}`}
-            >
-               <div className="flex items-center gap-3 overflow-hidden flex-1">
-                 <span className="shrink-0 flex items-center justify-center w-5">
-                    <SuggestionIcon type={s.type} label={s.label} />
-                 </span>
-                 <div className="flex flex-col truncate">
-                    <span className={`font-mono text-[14px] leading-tight ${s.label === 'AI Suggestion' ? 'text-purple-300' : 'text-blue-400 font-medium'}`}>
-                        {s.label}
-                    </span>
-                 </div>
-               </div>
-               
-               <span className="text-[11px] text-gray-500 italic ml-4 shrink-0 lowercase">
-                   {s.detail ? s.detail.replace(' Abbreviation', '') : s.type}
-               </span>
-            </button>
-          ))}
-        </div>
-      )}
-       
-       {/* Mobile Toolbar */}
        {!readOnly && (
            <MobileToolbar 
              onInsert={handleToolbarInsert}
-             onTab={handleTab}
-             onUndo={handleUndo}
-             onRedo={handleRedo}
-             onAiTrigger={handleAiAutocomplete}
+             onTab={() => {
+                const e = { preventDefault: () => {} } as any;
+                // Reuse existing tab logic logic
+                if (textareaRef.current) {
+                     const { selectionStart, selectionEnd, value } = textareaRef.current;
+                     const newValue = value.substring(0, selectionStart) + '  ' + value.substring(selectionEnd);
+                     onChange(newValue);
+                     nextCursorPosRef.current = selectionStart + 2;
+                     textareaRef.current.focus();
+                }
+             }}
+             onUndo={() => {
+                if (historyPointer.current > 0) {
+                    historyPointer.current -= 1;
+                    onChange(historyRef.current[historyPointer.current]);
+                }
+             }}
+             onRedo={() => {
+                if (historyPointer.current < historyRef.current.length - 1) {
+                    historyPointer.current += 1;
+                    onChange(historyRef.current[historyPointer.current]);
+                }
+             }}
+             onAiTrigger={() => {
+                 if (!textareaRef.current) return;
+                 setIsAiLoading(true);
+                 triggerAiSuggestion(textareaRef.current.value, textareaRef.current.selectionStart);
+             }}
              isAiLoading={isAiLoading}
            />
        )}
