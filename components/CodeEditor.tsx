@@ -40,7 +40,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
   // Syntax Highlighting & Color Preview
   useEffect(() => {
-    // 1. Extend CSS grammar to better catch whole color strings including Hex, RGB, HSL
     if (Prism.languages.css) {
         Prism.languages.css['color-preview'] = {
             pattern: /\b(?:#[\da-f]{3,8}|(?:rgb|hsl)a?\((?:(?:\s*\d+\s*%?)\s*,){2}(?:\s*\d+\s*%?)\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\))\b/i,
@@ -48,13 +47,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         };
     }
 
-    // 2. Add hook to style the color tokens
-    // We remove any existing 'wrap' hooks to avoid duplication if effect re-runs (though Prism hooks are global, this is a bit hacky but safe for this single-instance app usage)
-    // Actually, Prism hooks are global. We should add it once ideally.
-    // However, checking if it exists is hard. We'll just add it. Repeated adds might stack, so we'll accept that risk or try to minimize.
-    // For a robust app, we'd move this outside the component, but here we keep it localized.
-    
-    // We will use a unique property on the token to identify it
     const hookId = 'css-color-preview-hook';
     // @ts-ignore
     if (!window[hookId]) {
@@ -63,9 +55,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         
         Prism.hooks.add('wrap', (env) => {
             if (env.type === 'color-preview' || (env.type === 'color' && env.language === 'css')) {
-                // Apply background color equal to the content (the color code)
-                // Use text-shadow to ensure text is readable regardless of background
-                // Use outline to create a "box" effect without changing layout width
                 env.attributes.style = `
                     background-color: ${env.content}; 
                     color: rgba(255,255,255,0.9); 
@@ -156,7 +145,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const triggerAiSuggestion = async (currentVal: string, cursor: number) => {
       const requestId = activeRequestRef.current;
       
-      // Don't trigger if cursor moved away in the meantime (basic check)
+      // Don't trigger if cursor moved away in the meantime
       if (textareaRef.current?.selectionStart !== cursor) return;
 
       setIsAiLoading(true);
@@ -165,7 +154,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       try {
         const completion = await completeCode(textBefore, language);
         
-        // If user typed while we were waiting, discard result
         if (requestId !== activeRequestRef.current) {
             setIsAiLoading(false);
             return;
@@ -181,7 +169,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       } catch (e) {
           // ignore
       } finally {
-          // Only turn off loading if we are still the active request
           if (requestId === activeRequestRef.current) {
              setIsAiLoading(false);
           }
@@ -229,7 +216,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
          before = val.substring(0, cursorPos - abbr.length);
          after = val.substring(cursorPos);
     } else if (suggestion.label === 'AI Suggestion') {
-         // AI Suggestion appends
          before = val.substring(0, cursorPos);
          after = val.substring(cursorPos);
     } else {
@@ -239,7 +225,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         after = val.substring(cursorPos);
     }
 
-    // FIX: prevent double < if user typed <div and we insert <div>
     if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) {
@@ -273,7 +258,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     const cursorPos = textareaRef.current.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
     
-    // Increment request ref so passive timer doesn't overwrite this
     activeRequestRef.current++;
 
     try {
@@ -350,6 +334,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       textareaRef.current?.focus();
   };
 
+  // Explicit shared styles for exact alignment
+  const sharedEditorStyles: React.CSSProperties = {
+    fontFamily: '"Fira Code", monospace',
+    fontSize: '14px',
+    lineHeight: '21px', // Exact 1.5 line height (14 * 1.5)
+    padding: '16px', // Standard padding
+    paddingBottom: '150px', // Extra scrolling space
+    border: 'none',
+    margin: 0,
+    whiteSpace: 'pre',
+    wordWrap: 'normal',
+    overflowWrap: 'normal',
+    tabSize: 2,
+    boxSizing: 'border-box',
+    fontVariantLigatures: 'none',
+    width: '100%',
+    height: '100%',
+  };
+
   return (
     <div className="relative w-full h-full flex flex-col bg-vscode-bg">
       {/* Suggestions Widget */}
@@ -376,16 +379,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
       <div className="relative flex-1 overflow-hidden" style={{ cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
         {/* Line Numbers Gutter */}
-        <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '1.5rem', paddingTop: '1rem' }}>
+        <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '21px', paddingTop: '16px' }}>
            {code.split('\n').map((_, i) => <div key={i}>{i+1}</div>)}
         </div>
 
-        {/* 
-            CRITICAL FIX: 
-            Textarea and Pre must have IDENTICAL font styling, padding, and positioning.
-            Textarea color is transparent so we only see the caret.
-            Pre contains the colors.
-        */}
         <textarea
           ref={textareaRef}
           value={code}
@@ -396,11 +393,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
           autoCorrect="off"
           autoCapitalize="none"
           autoComplete="off"
-          className="absolute top-0 left-0 w-full h-full font-mono text-sm code-input resize-none outline-none z-10 leading-relaxed"
+          className="absolute top-0 left-0 outline-none z-10 code-input resize-none"
           style={{ 
-            whiteSpace: 'pre', 
-            lineHeight: '1.5rem', 
-            padding: '1rem 1rem 10rem 1rem', /* Extra bottom padding for mobile keyboard/toolbar */
+            ...sharedEditorStyles,
             color: 'transparent',
             background: 'transparent',
             caretColor: 'white',
@@ -410,11 +405,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
         <pre
           ref={preRef}
           aria-hidden="true"
-          className={`absolute top-0 left-0 w-full h-full m-0 font-mono text-sm pointer-events-none z-0 leading-relaxed language-${language}`}
+          className={`absolute top-0 left-0 pointer-events-none z-0 language-${language}`}
           style={{ 
-            whiteSpace: 'pre', 
-            lineHeight: '1.5rem',
-            padding: '1rem 1rem 10rem 1rem', /* Must match textarea EXACTLY */
+            ...sharedEditorStyles,
+            overflow: 'hidden' // Scrolling handled by textarea via sync
           }}
         >
           {code}
