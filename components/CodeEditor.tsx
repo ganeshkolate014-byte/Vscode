@@ -60,17 +60,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       return () => window.removeEventListener('resize', measureChar);
   }, []);
 
-  // SAFE SYNTAX HIGHLIGHTING:
-  // Instead of letting Prism modify the DOM node that React manages (which causes crashes),
-  // we generate the HTML string in memory and use dangerouslySetInnerHTML.
+  // SAFE SYNTAX HIGHLIGHTING
   const highlightedCode = useMemo(() => {
       try {
           const grammar = Prism.languages[language] || Prism.languages.html;
-          // Guard against empty code specifically
           if (!code) return '<br />';
           return Prism.highlight(code, grammar, language) + '<br />';
       } catch (e) {
-          // Fallback if Prism fails
           return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '<br />';
       }
   }, [code, language]);
@@ -81,7 +77,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const pos = nextCursorPosRef.current;
       textareaRef.current.setSelectionRange(pos, pos);
       nextCursorPosRef.current = null;
-      // Scroll cursor into view logic
       ensureCursorVisible();
       updateCursorPosition();
     }
@@ -99,13 +94,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const ensureCursorVisible = () => {
     if (!textareaRef.current || !containerRef.current) return;
     
-    // We calculate position and scroll container.
     const { selectionEnd, value } = textareaRef.current;
     const textBefore = value.substring(0, selectionEnd);
     const lines = textBefore.split('\n');
     const lineNo = lines.length;
     
-    // Top position of the line in pixels
     const cursorTop = (lineNo - 1) * 21 + 20; // 20px padding
     const cursorBottom = cursorTop + 21;
     
@@ -114,7 +107,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     
     if (cursorTop < scrollTop) {
         container.scrollTop = cursorTop - 20;
-    } else if (cursorBottom > scrollTop + clientHeight - 40) { // 40px buffer for toolbar
+    } else if (cursorBottom > scrollTop + clientHeight - 40) {
         container.scrollTop = cursorBottom - clientHeight + 40;
     }
   };
@@ -129,7 +122,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const row = lines.length; 
       const col = lines[lines.length - 1].length;
 
-      const top = (row * 21) - 21 + 20; // 21px line height, 20px padding
+      const top = (row * 21) - 21 + 20; 
       const left = (col * charSize.width) + 20;
       
       setCursorXY({ top, left });
@@ -137,7 +130,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       if (containerRef.current) {
          const container = containerRef.current;
          const cursorVisualTop = top - container.scrollTop;
-         // If cursor is low in the viewport, show suggestions above
          if (cursorVisualTop > container.clientHeight / 2) {
              setSuggestionPlacement('top');
          } else {
@@ -320,7 +312,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
       onChange(newValue);
       nextCursorPosRef.current = selectionStart + insertion.length;
-      // Scroll will happen in effect
     }
   };
 
@@ -356,7 +347,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const commonStyle: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
     fontSize: '14px',
-    lineHeight: '21px', // Fixed line height is crucial
+    lineHeight: '21px', 
     padding: '20px',
     margin: 0,
     border: 0,
@@ -372,12 +363,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       <div 
         ref={containerRef}
         className="relative flex-1 overflow-auto bg-vscode-bg scroll-smooth" 
+        style={{ backgroundColor: '#1e1e1e' }} 
         onClick={() => textareaRef.current?.focus()}
       >
         <div 
             className="relative min-h-full" 
             style={{ width: 'fit-content', minWidth: '100%' }}
         >
+            {/* Indent Guides Layer: Renders only if charSize is calculated */}
+            {charSize.width > 0 && (
+                <div 
+                    className="absolute inset-0 pointer-events-none z-0"
+                    style={{
+                        paddingLeft: '20px',
+                        backgroundSize: `${charSize.width * 2}px 100%`, // 2 spaces per indentation
+                        backgroundImage: `linear-gradient(to right, #303031 1px, transparent 1px)`
+                    }}
+                />
+            )}
+
             {/* Gutter */}
             <div className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-5 pr-2 text-right select-none z-10 hidden sm:block">
             {code.split('\n').map((_, i) => <div key={i} style={{height: '21px'}}>{i+1}</div>)}
@@ -387,7 +391,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
             <pre
                 ref={preRef}
                 aria-hidden="true"
-                className={`pointer-events-none language-${language} m-0 border-0`}
+                className={`pointer-events-none language-${language} m-0 border-0 relative z-10`}
                 style={{ 
                     ...commonStyle, 
                     minHeight: '100%',
@@ -408,11 +412,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
                 autoCorrect="off"
                 autoCapitalize="none"
                 autoComplete="off"
-                className="absolute inset-0 w-full h-full overflow-hidden resize-none outline-none z-0 text-transparent bg-transparent caret-white"
+                className="absolute inset-0 w-full h-full overflow-hidden resize-none outline-none z-20 text-transparent bg-transparent caret-white"
                 style={{ 
                     ...commonStyle,
                     color: 'transparent',
-                    paddingBottom: '250px' 
+                    paddingBottom: '250px',
+                    backgroundColor: 'transparent' // Explicitly transparent
                 }}
                 disabled={readOnly}
             />

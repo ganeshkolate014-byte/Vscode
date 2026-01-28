@@ -69,6 +69,7 @@
       html {
         -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
         text-size-adjust: 100%;
+        background-color: #1e1e1e; /* FIXED: Prevents white bottom bar on scroll bounce */
       }
       html, body {
         height: 100%;
@@ -76,6 +77,7 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
+        background-color: #1e1e1e; /* FIXED: Uniform background */
         /* Prevent bounce effect on iOS and ensure full height on Android by locking to viewport */
         position: fixed; 
         top: 0;
@@ -113,7 +115,7 @@
 </script>
 </head>
   <body class="bg-vscode-bg text-vscode-fg selection:bg-vscode-accent selection:text-white">
-    <div id="root" class="h-full w-full"></div>
+    <div id="root" class="h-full w-full bg-vscode-bg"></div>
     <!-- Vite Entry Point -->
     <script type="module" src="/index.tsx"></script>
   </body>
