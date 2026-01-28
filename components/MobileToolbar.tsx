@@ -1,18 +1,19 @@
 import React from 'react';
-import { Undo, Redo, ArrowRightFromLine, Sparkles, Loader2 } from 'lucide-react';
+import { Undo, Redo, ArrowRightFromLine, Sparkles, Loader2, AlignLeft } from 'lucide-react';
 
 interface MobileToolbarProps {
   onInsert: (text: string) => void;
   onTab: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onFormat: () => void;
   onAiTrigger: () => void;
   isAiLoading: boolean;
 }
 
 const SYMBOLS = ['<', '>', '/', '{', '}', '(', ')', '[', ']', '=', '"', "'", '`', ';', ':', '!', '-', '_', '$', '*', '.', ','];
 
-export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, onUndo, onRedo, onAiTrigger, isAiLoading }) => {
+export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, onUndo, onRedo, onFormat, onAiTrigger, isAiLoading }) => {
   return (
     <div className="w-full h-12 bg-vscode-activity border-t border-vscode-border flex items-center overflow-x-auto no-scrollbar touch-pan-x z-40 select-none shadow-lg">
       <div className="flex px-2 gap-2 h-full items-center">
@@ -25,6 +26,15 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, o
         </button>
 
         <div className="w-px h-6 bg-vscode-border mx-1" />
+
+        {/* Format Action */}
+        <button 
+          onMouseDown={(e) => { e.preventDefault(); onFormat(); }} 
+          className="h-8 px-3 bg-vscode-input rounded text-vscode-fg flex items-center justify-center hover:bg-vscode-accent active:bg-vscode-accent transition-colors"
+          title="Format Document"
+        >
+            <AlignLeft size={16} />
+        </button>
 
         {/* Actions */}
         <button onMouseDown={(e) => { e.preventDefault(); onTab(); }} className="h-8 px-3 bg-vscode-input rounded text-vscode-fg flex items-center justify-center hover:bg-vscode-accent active:bg-vscode-accent transition-colors">

@@ -8,6 +8,7 @@ import { Suggestion } from '../types';
 import { Bot } from 'lucide-react'; 
 import { completeCode } from '../services/geminiService';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
+import { formatCode } from '../services/formattingService';
 import { MobileToolbar } from './MobileToolbar';
 
 interface CodeEditorProps {
@@ -270,7 +271,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     textareaRef.current.focus();
   };
 
+  const handleFormat = async () => {
+    const formatted = await formatCode(code, language);
+    onChange(formatted);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Format Shortcut: Shift + Alt + F
+    if (e.shiftKey && e.altKey && e.code === 'KeyF') {
+        e.preventDefault();
+        handleFormat();
+        return;
+    }
+
     if (suggestions.length > 0) {
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -469,6 +482,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
                     onChange(historyRef.current[historyPointer.current]);
                 }
              }}
+             onFormat={handleFormat}
              onAiTrigger={() => {
                  if (!textareaRef.current) return;
                  setIsAiLoading(true);
