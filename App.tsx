@@ -51,7 +51,7 @@ const getLanguage = (filename: string): 'html' | 'css' | 'javascript' => {
 };
 
 export default function App() {
-  // Load files from local storage if available, but ensure consistent IDs for default
+  // Load files from local storage if available
   const [files, setFiles] = useState<FileNode[]>(() => {
     const saved = localStorage.getItem('droidcoder_files');
     return saved ? JSON.parse(saved) : initialFiles;
@@ -59,39 +59,54 @@ export default function App() {
 
   const [openFiles, setOpenFiles] = useState<string[]>(['1']); 
   const [activeFileId, setActiveFileId] = useState<string>('1');
-  
   const [activeSideBar, setActiveSideBar] = useState<string | null>('explorer');
-  // 'hidden' | 'full' | 'split'
   const [previewMode, setPreviewMode] = useState<'hidden' | 'full' | 'split'>('hidden');
-  
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-
-  // Debounced files for preview to prevent lag
   const [debouncedFiles, setDebouncedFiles] = useState<FileNode[]>(files);
-  
-  // Track save timer
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Save to local storage whenever files change (only if no handle present)
+  // Viewport Height Management for Mobile Keyboard
+  const [viewportHeight, setViewportHeight] = useState('100%');
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+
   useEffect(() => {
-    // Only save to localStorage if we are in "in-memory" mode (simplified check)
+    const handleResize = () => {
+      // Use visualViewport if available for precise keyboard handling
+      if (window.visualViewport) {
+        setViewportHeight(`${window.visualViewport.height}px`);
+        // If height is significantly smaller than screen height, keyboard is likely open
+        setIsKeyboardOpen(window.visualViewport.height < window.screen.height * 0.75);
+      } else {
+        setViewportHeight(`${window.innerHeight}px`);
+      }
+    };
+
+    // Initial set
+    handleResize();
+
+    // Listeners
+    window.visualViewport?.addEventListener('resize', handleResize);
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  // Save logic
+  useEffect(() => {
     const hasHandles = files.some(f => f.handle);
     if (!hasHandles) {
         localStorage.setItem('droidcoder_files', JSON.stringify(files));
     }
-    
-    // Debounce the preview update
-    const handler = setTimeout(() => {
-      setDebouncedFiles(files);
-    }, 500); // 500ms delay
-
+    const handler = setTimeout(() => setDebouncedFiles(files), 500);
     return () => clearTimeout(handler);
   }, [files]);
 
   const getFileContent = (name: string) => {
-      // Recursive search for file content
       const findContent = (nodes: FileNode[]): string | undefined => {
           for (const node of nodes) {
               if (node.name === name && node.type === 'file') return node.content;
@@ -119,22 +134,15 @@ export default function App() {
       return findNode(files);
   }, [files, activeFileId]);
 
-
-  // File System Access Implementation
   const handleOpenFolder = async () => {
     try {
-        // @ts-ignore - File System Access API
+        // @ts-ignore
         const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-        
-        // Reset workspace
         setOpenFiles([]);
         setActiveFileId('');
         setFiles([]);
-
         const nodes = await readDirectory(dirHandle, null);
         setFiles(nodes);
-        
-        // Try to open index.html if exists
         const indexNode = nodes.find(n => n.name === 'index.html');
         if (indexNode) {
             setOpenFiles([indexNode.id]);
@@ -142,7 +150,7 @@ export default function App() {
         }
     } catch (err) {
         console.error("Error opening folder:", err);
-        alert("Could not open folder. Please ensure you are using a supported browser (Chrome on Android) and granted permissions.");
+        alert("Could not open folder.");
     }
   };
 
@@ -152,36 +160,20 @@ export default function App() {
           const id = parentId ? `${parentId}/${entry.name}` : entry.name;
           if (entry.kind === 'file') {
               const file = await entry.getFile();
-              // Only read text files to avoid memory issues with binaries
               let content = '';
               if (file.size < 100000 && !file.type.startsWith('image')) {
-                 try {
-                     content = await file.text();
-                 } catch (e) { console.warn("Skipping binary/large file", entry.name); }
+                 try { content = await file.text(); } catch (e) {}
               }
-              
               nodes.push({
-                  id,
-                  name: entry.name,
-                  type: 'file',
-                  language: getLanguage(entry.name),
-                  content,
-                  handle: entry
+                  id, name: entry.name, type: 'file', language: getLanguage(entry.name), content, handle: entry
               });
           } else if (entry.kind === 'directory') {
-              // Recurse
               const children = await readDirectory(entry, id);
               nodes.push({
-                  id,
-                  name: entry.name,
-                  type: 'folder',
-                  children,
-                  isOpen: false,
-                  handle: entry
+                  id, name: entry.name, type: 'folder', children, isOpen: false, handle: entry
               });
           }
       }
-      // Sort: folders first, then files
       return nodes.sort((a, b) => {
           if (a.type === b.type) return a.name.localeCompare(b.name);
           return a.type === 'folder' ? -1 : 1;
@@ -189,39 +181,28 @@ export default function App() {
   };
 
   const handleCodeChange = (newCode: string) => {
-    // 1. Update State
     setFiles(prev => {
         const updateNode = (nodes: FileNode[]): FileNode[] => {
             return nodes.map(node => {
-                if (node.id === activeFileId) {
-                    return { ...node, content: newCode };
-                }
-                if (node.children) {
-                    return { ...node, children: updateNode(node.children) };
-                }
+                if (node.id === activeFileId) return { ...node, content: newCode };
+                if (node.children) return { ...node, children: updateNode(node.children) };
                 return node;
             });
         };
         return updateNode(prev);
     });
 
-    // 2. Auto-save to disk if handle exists (Debounced)
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    
     saveTimeoutRef.current = setTimeout(async () => {
         if (!activeFile || !activeFile.handle) return;
         try {
             const writable = await activeFile.handle.createWritable();
             await writable.write(newCode);
             await writable.close();
-            console.log("Saved to disk:", activeFile.name);
-        } catch (e) {
-            console.error("Failed to save file:", e);
-        }
-    }, 1000); // Auto-save after 1s of inactivity
+        } catch (e) { console.error("Failed to save file:", e); }
+    }, 1000);
   };
 
-  // File Operations
   const toggleFolder = (folderId: string) => {
     setFiles(prev => {
          const toggle = (nodes: FileNode[]): FileNode[] => {
@@ -236,63 +217,34 @@ export default function App() {
   };
 
   const handleFileSelect = (node: FileNode) => {
-    if (!openFiles.includes(node.id)) {
-      setOpenFiles(prev => [...prev, node.id]);
-    }
+    if (!openFiles.includes(node.id)) setOpenFiles(prev => [...prev, node.id]);
     setActiveFileId(node.id);
-    if (window.innerWidth < 768) {
-       setActiveSideBar(null);
-    }
+    if (window.innerWidth < 768) setActiveSideBar(null);
   };
 
   const closeTab = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     const newOpenFiles = openFiles.filter(fid => fid !== id);
     setOpenFiles(newOpenFiles);
-    if (activeFileId === id && newOpenFiles.length > 0) {
-      setActiveFileId(newOpenFiles[newOpenFiles.length - 1]);
-    } else if (newOpenFiles.length === 0) {
-      setActiveFileId('');
-    }
+    if (activeFileId === id && newOpenFiles.length > 0) setActiveFileId(newOpenFiles[newOpenFiles.length - 1]);
+    else if (newOpenFiles.length === 0) setActiveFileId('');
   };
 
   const createFile = (parentId: string | null, type: 'file' | 'folder', name: string) => {
-      // NOTE: Creating files on disk is complex because we need the parent handle.
-      // For simplicity in this demo, if using file system, we only modify state in memory
-      // unless we track parent handles perfectly. 
-      // Users should create files via other apps or we implement full handle tracking.
-      // For now, we fallback to in-memory creation which won't persist to disk 
-      // unless we implement the 'create file on disk' logic.
-      
       const newFile: FileNode = {
-        id: Date.now().toString(),
-        name,
-        type,
-        content: type === 'file' ? '' : undefined,
-        language: getLanguage(name),
-        isOpen: true,
-        children: []
+        id: Date.now().toString(), name, type, content: type === 'file' ? '' : undefined, language: getLanguage(name), isOpen: true, children: []
       };
-      
       setFiles(prev => {
-          // If parentId is null, add to root
           if (!parentId) return [...prev, newFile];
-          
-          // Otherwise find parent and add
           const addToParent = (nodes: FileNode[]): FileNode[] => {
               return nodes.map(node => {
-                  if (node.id === parentId && node.children) {
-                      return { ...node, children: [...node.children, newFile], isOpen: true };
-                  }
-                  if (node.children) {
-                      return { ...node, children: addToParent(node.children) };
-                  }
+                  if (node.id === parentId && node.children) return { ...node, children: [...node.children, newFile], isOpen: true };
+                  if (node.children) return { ...node, children: addToParent(node.children) };
                   return node;
               });
           };
           return addToParent(prev);
       });
-      
       if (type === 'file') handleFileSelect(newFile);
   };
 
@@ -306,7 +258,6 @@ export default function App() {
         };
         return remove(prev);
     });
-    
     if (openFiles.includes(id)) {
        const newOpen = openFiles.filter(fid => fid !== id);
        setOpenFiles(newOpen);
@@ -314,14 +265,12 @@ export default function App() {
     }
   };
 
-  // Chat
   const sendChatMessage = async () => {
     if (!chatInput.trim()) return;
     const userMsg: ChatMessage = { role: 'user', text: chatInput };
     setChatMessages(prev => [...prev, userMsg]);
     setChatInput('');
     setIsChatLoading(true);
-
     const context = activeFile ? `Active File: ${activeFile.name}\n${activeFile.content}` : 'No active file.';
     const response = await generateCodeHelp(userMsg.text, context);
     setChatMessages(prev => [...prev, { role: 'model', text: response }]);
@@ -334,7 +283,6 @@ export default function App() {
       else setPreviewMode('hidden');
   };
   
-  // Need useMemo to find active file recursively
   const findActiveNode = (nodes: FileNode[], id: string): FileNode | undefined => {
       for (const node of nodes) {
           if (node.id === id) return node;
@@ -349,7 +297,7 @@ export default function App() {
   const currentActiveNode = useMemo(() => findActiveNode(files, activeFileId), [files, activeFileId]);
 
   return (
-    <div className="flex flex-col h-full bg-vscode-bg text-vscode-fg font-sans">
+    <div className="flex flex-col bg-vscode-bg text-vscode-fg font-sans w-full" style={{ height: viewportHeight, overflow: 'hidden' }}>
       
       {/* 1. Main Workspace Area */}
       <div className="flex-1 flex overflow-hidden relative">
@@ -487,8 +435,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. Activity Bar (Mobile Bottom) */}
-      <div className="md:hidden h-12 bg-vscode-activity flex justify-around items-center border-t border-black shrink-0 z-40">
+      {/* 2. Activity Bar (Mobile Bottom) - Hide when Keyboard Open to give space */}
+      {!isKeyboardOpen && (
+        <div className="md:hidden h-12 bg-vscode-activity flex justify-around items-center border-t border-black shrink-0 z-40">
            <ActivityIcon icon={<Files size={20} />} active={activeSideBar === 'explorer'} onClick={() => setActiveSideBar(activeSideBar === 'explorer' ? null : 'explorer')} />
            <ActivityIcon icon={<Search size={20} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
            
@@ -501,10 +450,12 @@ export default function App() {
            
            <ActivityIcon icon={<MessageSquare size={20} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
            <ActivityIcon icon={<Settings size={20} />} active={false} onClick={() => {}} />
-      </div>
+        </div>
+      )}
 
-      {/* 3. Status Bar */}
-      <div className="h-6 bg-vscode-accent text-white flex items-center px-3 text-[11px] justify-between select-none shrink-0 z-50">
+      {/* 3. Status Bar - Hide when Keyboard Open */}
+      {!isKeyboardOpen && (
+        <div className="h-6 bg-vscode-accent text-white flex items-center px-3 text-[11px] justify-between select-none shrink-0 z-50">
           <div className="flex gap-4">
               <span className="flex items-center gap-1"><Code2 size={10}/> {currentActiveNode ? 'Local File' : 'Main'}</span>
               <span>Preview: {previewMode}</span>
@@ -513,7 +464,8 @@ export default function App() {
                <span>Ln {currentActiveNode ? (currentActiveNode.content?.split('\n').length || 1) : 0}</span>
                <span>{currentActiveNode?.language?.toUpperCase() || 'TXT'}</span>
           </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

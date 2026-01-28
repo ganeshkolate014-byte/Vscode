@@ -5,7 +5,7 @@ import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-markup'; 
 import { HTML_TAGS, CSS_PROPS, JS_KEYWORDS } from '../constants';
 import { Suggestion } from '../types';
-import { Sparkles, Zap, Bot, Box, Code, Hash, Type, ChevronRight } from 'lucide-react'; 
+import { Bot } from 'lucide-react'; 
 import { completeCode } from '../services/geminiService';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { MobileToolbar } from './MobileToolbar';
@@ -17,11 +17,6 @@ interface CodeEditorProps {
   readOnly?: boolean;
 }
 
-const SuggestionIcon = ({ type, label }: { type: string, label: string }) => {
-    if (label === 'AI Suggestion') return <Bot size={14} className="text-purple-400" />;
-    return null; 
-};
-
 export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, readOnly = false }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -29,6 +24,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const [suggestionPlacement, setSuggestionPlacement] = useState<'top' | 'bottom'>('bottom');
   const [charSize, setCharSize] = useState({ width: 0, height: 21 });
   
+  const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const nextCursorPosRef = useRef<number | null>(null); 
@@ -40,28 +36,28 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
 
-  // 1. Measure Character Size for precise cursor positioning
+  // 1. Measure Character Size accurately after font load
   useEffect(() => {
-      const span = document.createElement('span');
-      span.style.fontFamily = '"Fira Code", monospace';
-      span.style.fontSize = '14px';
-      span.style.visibility = 'hidden';
-      span.style.position = 'absolute';
-      span.textContent = 'M'; // Wide character
-      document.body.appendChild(span);
-      const rect = span.getBoundingClientRect();
-      setCharSize({ width: rect.width, height: 21 });
-      document.body.removeChild(span);
-  }, []);
+      const measure = () => {
+          const span = document.createElement('span');
+          span.style.fontFamily = '"Fira Code", monospace';
+          span.style.fontSize = '14px';
+          span.style.visibility = 'hidden';
+          span.style.position = 'absolute';
+          span.textContent = 'M'; 
+          document.body.appendChild(span);
+          const rect = span.getBoundingClientRect();
+          // Fira Code is monospace. Height usually ~21px for 14px font with normal line-height
+          setCharSize({ width: rect.width, height: 21 });
+          document.body.removeChild(span);
+      };
 
-  // Sync scroll exactly
-  const handleScroll = () => {
-    if (textareaRef.current && preRef.current) {
-      preRef.current.scrollTop = textareaRef.current.scrollTop;
-      preRef.current.scrollLeft = textareaRef.current.scrollLeft;
-      updateCursorPosition();
-    }
-  };
+      measure();
+      // Ensure we measure again after fonts are definitely loaded
+      if (document.fonts) {
+          document.fonts.ready.then(measure);
+      }
+  }, []);
 
   // Syntax Highlighting
   useEffect(() => {
@@ -92,27 +88,30 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   const updateCursorPosition = () => {
       if (!textareaRef.current || charSize.width === 0) return;
       
-      const { selectionEnd, value, scrollTop, scrollLeft, clientHeight } = textareaRef.current;
+      const { selectionEnd, value } = textareaRef.current;
       
-      // Calculate row and column
       const textUpToCursor = value.substring(0, selectionEnd);
       const lines = textUpToCursor.split('\n');
       const row = lines.length; 
       const col = lines[lines.length - 1].length;
 
-      // Calculate pixel coordinates
-      // Padding top/left is 20px (from sharedStyles)
-      const top = (row * charSize.height) - scrollTop + 20; 
-      const left = (col * charSize.width) - scrollLeft + 20;
+      // Coordinates relative to the CONTENT (not the viewport)
+      // We add padding (20px)
+      const top = (row * charSize.height) - charSize.height + 20; 
+      const left = (col * charSize.width) + 20;
       
       setCursorXY({ top, left });
 
-      // Determine placement (Flip if close to bottom)
-      // We assume suggestion box is approx 200px max
-      if (top > clientHeight - 180) {
-          setSuggestionPlacement('top');
-      } else {
-          setSuggestionPlacement('bottom');
+      // Determine placement based on visibility in container
+      if (containerRef.current) {
+         const container = containerRef.current;
+         // Relative position of cursor in viewport
+         const cursorVisualTop = top - container.scrollTop;
+         if (cursorVisualTop > container.clientHeight - 200) {
+             setSuggestionPlacement('top');
+         } else {
+             setSuggestionPlacement('bottom');
+         }
       }
   };
 
@@ -121,12 +120,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     onChange(val);
     activeRequestRef.current++;
     
-    // Clear timer
     if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
 
     const cursorPos = e.target.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
     
+    // Defer cursor update slightly to ensure layout is stable? No, immediate is better.
     updateCursorPosition();
 
     let newSuggestions: Suggestion[] = [];
@@ -134,7 +133,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     const currentWord = words[words.length - 1];
 
     if (currentWord.length > 0) {
-        // 1. Emmet
         if (language === 'html') {
             const potentialAbbr = extractAbbreviation(textBeforeCursor);
             if (potentialAbbr && potentialAbbr.length > 0) {
@@ -150,7 +148,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
             }
         }
 
-        // 2. Standard
         let source: Suggestion[] = [];
         if (language === 'html') source = HTML_TAGS;
         if (language === 'css') source = CSS_PROPS;
@@ -324,97 +321,108 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       textareaRef.current.focus();
   };
 
-  const sharedEditorStyles: React.CSSProperties = {
+  const commonStyle: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
     fontSize: '14px',
     lineHeight: '21px',
-    paddingTop: '20px',
-    paddingBottom: '150px', // Extra padding at bottom to allow scrolling past keyboard/toolbar
-    paddingLeft: '20px',  
-    paddingRight: '20px',
-    border: '0',
-    margin: '0',
-    outline: 'none',
-    whiteSpace: 'pre', 
+    padding: '20px',
+    margin: 0,
+    border: 0,
+    whiteSpace: 'pre',
     wordWrap: 'normal',
     overflowWrap: 'normal',
     tabSize: 2,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'transparent',
   };
 
   return (
     <div className="relative w-full h-full flex flex-col bg-vscode-bg">
-      <div className="relative flex-1 overflow-hidden" style={{ cursor: 'text' }} onClick={() => textareaRef.current?.focus()}>
-        {/* Gutter */}
-        <div className="absolute top-0 left-0 w-10 h-full bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-4 pr-2 text-right select-none z-20 hidden sm:block" style={{ lineHeight: '21px', paddingTop: '20px' }}>
-           {code.split('\n').map((_, i) => <div key={i}>{i+1}</div>)}
-        </div>
+      <div 
+        ref={containerRef}
+        className="relative flex-1 overflow-auto bg-vscode-bg scroll-smooth" 
+        onClick={() => textareaRef.current?.focus()}
+      >
+        <div className="min-w-full min-h-full relative inline-block">
+            {/* Gutter - Only on Desktop for now to save space on mobile */}
+            <div className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-5 pr-2 text-right select-none z-10 hidden sm:block">
+            {code.split('\n').map((_, i) => <div key={i} style={{height: '21px'}}>{i+1}</div>)}
+            </div>
 
-        <textarea
-          ref={textareaRef}
-          value={code}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          onScroll={handleScroll}
-          onClick={updateCursorPosition}
-          spellCheck={false}
-          autoCorrect="off"
-          autoCapitalize="none"
-          autoComplete="off"
-          className="absolute top-0 left-0 outline-none z-10 code-input resize-none"
-          style={{ ...sharedEditorStyles, color: 'transparent', caretColor: 'white', overflow: 'auto' }}
-          disabled={readOnly}
-        />
-        <pre
-          ref={preRef}
-          aria-hidden="true"
-          className={`absolute top-0 left-0 pointer-events-none z-0 language-${language} m-0 border-0`}
-          style={{ ...sharedEditorStyles, overflow: 'hidden' }}
-        >
-          {code}
-        </pre>
-
-        {/* Suggestion Dropdown */}
-        {(suggestions.length > 0) && (
-            <div 
-                className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm flex flex-col min-w-[200px] max-w-[300px] max-h-48 overflow-y-auto"
-                style={{
-                    left: cursorXY.left,
-                    // If 'top' placement, bottom is fixed at calculated position. 
-                    // If 'bottom' placement, top is fixed.
-                    ...(suggestionPlacement === 'top' 
-                        ? { bottom: `calc(100% - ${cursorXY.top}px)` } 
-                        : { top: cursorXY.top + 21 } // 21 is line height
-                    )
-                }}
+            {/* PRE: Handles visual sizing and highlighting */}
+            <pre
+            ref={preRef}
+            aria-hidden="true"
+            className={`pointer-events-none language-${language} m-0 border-0`}
+            style={{ 
+                ...commonStyle, 
+                minHeight: '100%',
+                paddingBottom: '150px' // Extra space for keyboard scroll
+            }}
             >
-                {suggestions.map((s, idx) => (
-                    <div
-                        key={idx}
-                        onClick={() => insertSuggestion(s)}
-                        className={`flex items-center justify-between px-3 py-1 cursor-pointer font-mono text-sm border-b border-[#333333] last:border-0 ${idx === selectedIdx ? 'bg-[#007acc] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'}`}
-                    >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                            {s.label === 'AI Suggestion' && <Bot size={12} />}
-                            <span className={`truncate ${idx === selectedIdx ? 'text-white' : s.label === 'AI Suggestion' ? 'text-purple-400' : 'text-blue-400'}`}>
-                                {s.label}
+            {code}
+            {/* Trailing break to ensure empty last lines are rendered with height */}
+            <br /> 
+            </pre>
+
+            {/* TEXTAREA: Handles input and cursor */}
+            <textarea
+            ref={textareaRef}
+            value={code}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            onClick={updateCursorPosition}
+            onKeyUp={updateCursorPosition} // Update on arrow keys
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="none"
+            autoComplete="off"
+            className="absolute inset-0 w-full h-full overflow-hidden resize-none outline-none z-0 text-transparent bg-transparent caret-white"
+            style={{ 
+                ...commonStyle,
+                color: 'transparent',
+                paddingBottom: '150px' 
+            }}
+            disabled={readOnly}
+            />
+
+            {/* Suggestions - Positioned absolutely within the scrolling container */}
+            {(suggestions.length > 0) && (
+                <div 
+                    className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm flex flex-col min-w-[200px] max-w-[300px] max-h-48 overflow-y-auto"
+                    style={{
+                        left: cursorXY.left,
+                        ...(suggestionPlacement === 'top' 
+                            ? { bottom: `calc(100% - ${cursorXY.top}px + 5px)` } // +5px buffer
+                            : { top: cursorXY.top + 21 + 5 } 
+                        )
+                    }}
+                >
+                    {suggestions.map((s, idx) => (
+                        <div
+                            key={idx}
+                            onClick={() => insertSuggestion(s)}
+                            className={`flex items-center justify-between px-3 py-1 cursor-pointer font-mono text-sm border-b border-[#333333] last:border-0 ${idx === selectedIdx ? 'bg-[#007acc] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'}`}
+                        >
+                            <div className="flex items-center gap-2 overflow-hidden">
+                                {s.label === 'AI Suggestion' && <Bot size={12} />}
+                                <span className={`truncate ${idx === selectedIdx ? 'text-white' : s.label === 'AI Suggestion' ? 'text-purple-400' : 'text-blue-400'}`}>
+                                    {s.label}
+                                </span>
+                            </div>
+                            <span className={`text-xs ml-4 italic shrink-0 ${idx === selectedIdx ? 'text-white opacity-80' : 'text-gray-500'}`}>
+                                {s.detail ? s.detail.replace(' Abbreviation', '') : s.type}
                             </span>
                         </div>
-                        <span className={`text-xs ml-4 italic shrink-0 ${idx === selectedIdx ? 'text-white opacity-80' : 'text-gray-500'}`}>
-                            {s.detail ? s.detail.replace(' Abbreviation', '') : s.type}
-                        </span>
-                    </div>
-                ))}
-            </div>
-        )}
+                    ))}
+                </div>
+            )}
+        </div>
       </div>
 
        {!readOnly && (
            <MobileToolbar 
              onInsert={handleToolbarInsert}
              onTab={() => {
+                // Reuse existing tab logic 
                 const e = { preventDefault: () => {} } as any;
                 if (textareaRef.current) {
                      const { selectionStart, selectionEnd, value } = textareaRef.current;
