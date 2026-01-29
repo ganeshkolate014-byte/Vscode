@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { CodeEditor } from './components/CodeEditor';
 import { FileExplorer } from './components/FileExplorer';
 import { LivePreview } from './components/LivePreview';
+import { GitPanel } from './components/GitPanel';
 import { FileNode, ChatMessage } from './types';
 import { 
   Files, 
@@ -153,8 +155,8 @@ export default function App() {
             setActiveFileId(indexNode.id);
         }
     } catch (err) {
-        console.error("Error opening folder:", err);
-        alert("Could not open folder.");
+      console.error("Error opening folder:", err);
+      // alert("Could not open folder.");
     }
   };
 
@@ -300,6 +302,38 @@ export default function App() {
   
   const currentActiveNode = useMemo(() => findActiveNode(files, activeFileId), [files, activeFileId]);
 
+  // --- GitHub Integrations ---
+  const handleGitImport = (nodes: FileNode[], repoName: string) => {
+      setFiles(nodes);
+      setOpenFiles([]);
+      setActiveFileId('');
+      // Try to open index.html or README
+      const readme = nodes.find(n => n.name.toLowerCase().startsWith('readme'));
+      const index = nodes.find(n => n.name === 'index.html');
+      const firstFile = index || readme || nodes.find(n => n.type === 'file');
+      
+      if (firstFile) {
+          setOpenFiles([firstFile.id]);
+          setActiveFileId(firstFile.id);
+      }
+      
+      // Auto-switch to files view on mobile after import
+      setActiveSideBar('explorer');
+  };
+
+  const handleUpdateFileNode = (id: string, sha: string) => {
+      setFiles(prev => {
+          const update = (nodes: FileNode[]): FileNode[] => {
+              return nodes.map(n => {
+                  if (n.id === id) return { ...n, sha };
+                  if (n.children) return { ...n, children: update(n.children) };
+                  return n;
+              });
+          };
+          return update(prev);
+      });
+  };
+
   return (
     <div className="flex flex-col bg-vscode-bg text-vscode-fg font-sans w-full" style={{ height: viewportHeight, overflow: 'hidden' }}>
       
@@ -310,7 +344,7 @@ export default function App() {
         <aside className="hidden md:flex flex-col w-12 bg-vscode-activity items-center py-2 gap-4 border-r border-vscode-bg shrink-0 z-20">
             <ActivityIcon icon={<Files size={24} />} active={activeSideBar === 'explorer'} onClick={() => setActiveSideBar(activeSideBar === 'explorer' ? null : 'explorer')} />
             <ActivityIcon icon={<Search size={24} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
-            <ActivityIcon icon={<GitGraph size={24} />} active={activeSideBar === 'git'} onClick={() => {}} />
+            <ActivityIcon icon={<GitGraph size={24} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
             <ActivityIcon icon={<MessageSquare size={24} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
             <div className="flex-1" />
             <ActivityIcon icon={<Settings size={24} />} active={false} onClick={() => {}} />
@@ -329,6 +363,14 @@ export default function App() {
                  onCreateNode={createFile}
                  onDeleteNode={deleteNode}
                  onOpenFolder={handleOpenFolder}
+               />
+             )}
+
+             {activeSideBar === 'git' && (
+               <GitPanel 
+                 files={files}
+                 onImport={handleGitImport}
+                 onUpdateFileNode={handleUpdateFileNode}
                />
              )}
 
@@ -452,8 +494,8 @@ export default function App() {
                {previewMode === 'hidden' ? <Play size={24} className="text-white ml-1" /> : <Code2 size={24} className="text-white" />}
            </div>
            
+           <ActivityIcon icon={<GitGraph size={20} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
            <ActivityIcon icon={<MessageSquare size={20} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
-           <ActivityIcon icon={<Settings size={20} />} active={false} onClick={() => {}} />
         </div>
       )}
 
