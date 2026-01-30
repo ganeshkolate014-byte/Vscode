@@ -1,8 +1,14 @@
+
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-markup'; 
+// Ensure markup is available for HTML
+if (typeof window !== 'undefined' && Prism.languages.markup) {
+    Prism.languages.html = Prism.languages.markup;
+}
+
 import { HTML_TAGS, CSS_PROPS, JS_KEYWORDS } from '../constants';
 import { Suggestion } from '../types';
 import { Bot } from 'lucide-react'; 
@@ -15,10 +21,11 @@ interface CodeEditorProps {
   code: string;
   language: 'html' | 'css' | 'javascript';
   onChange: (newCode: string) => void;
+  onCursorMove?: (line: number, col: number) => void;
   readOnly?: boolean;
 }
 
-export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, readOnly = false }) => {
+export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, onCursorMove, readOnly = false }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [cursorXY, setCursorXY] = useState({ top: 0, left: 0 });
@@ -64,10 +71,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   // SAFE SYNTAX HIGHLIGHTING
   const highlightedCode = useMemo(() => {
       try {
-          const grammar = Prism.languages[language] || Prism.languages.html;
+          // Resolve Grammar
+          let grammar = Prism.languages[language];
+          if (!grammar) {
+             if (language === 'html') grammar = Prism.languages.markup || Prism.languages.html;
+             if (language === 'javascript') grammar = Prism.languages.javascript || Prism.languages.js;
+             if (language === 'css') grammar = Prism.languages.css;
+          }
+          
+          // Fallback
+          if (!grammar) grammar = Prism.languages.markup;
+
           if (!code) return '<br />';
-          return Prism.highlight(code, grammar, language) + '<br />';
+          return Prism.highlight(code, grammar || Prism.languages.markup, language) + '<br />';
       } catch (e) {
+          // Fallback to simple escaping if Prism fails
           return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '<br />';
       }
   }, [code, language]);
@@ -122,6 +140,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const lines = textUpToCursor.split('\n');
       const row = lines.length; 
       const col = lines[lines.length - 1].length;
+
+      // Notify parent about cursor stats
+      if (onCursorMove) {
+          onCursorMove(row, col + 1);
+      }
 
       const top = (row * 21) - 21 + 20; 
       const left = (col * charSize.width) + 20;
@@ -316,15 +339,48 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     } 
     else if (e.key === 'Enter') {
       e.preventDefault();
+      
       const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-      const currentLine = value.substring(lineStart, selectionStart);
+      const textBeforeCursor = value.substring(0, selectionStart);
+      const currentLine = textBeforeCursor.substring(lineStart);
+      
       const match = currentLine.match(/^\s*/);
-      const indent = match ? match[0] : '';
-      let insertion = '\n' + indent;
-      if (/[:{(\[>]\s*$/.test(currentLine)) insertion += '  ';
-      const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
-      onChange(newValue);
-      nextCursorPosRef.current = selectionStart + insertion.length;
+      const currentIndent = match ? match[0] : '';
+      
+      const charBefore = value[selectionStart - 1];
+      const charAfter = value[selectionStart];
+      
+      let insertion = '\n' + currentIndent;
+      let extraOffset = 0;
+
+      // Smart Indentation for brackets/braces
+      if (
+        (charBefore === '{' && charAfter === '}') ||
+        (charBefore === '(' && charAfter === ')') ||
+        (charBefore === '[' && charAfter === ']')
+      ) {
+         insertion += '  \n' + currentIndent;
+         extraOffset = currentIndent.length + 3; // Position inside the new indent
+      } else if (
+          ['{', '(', '[', ':'].includes(charBefore) || 
+          (language === 'html' && textBeforeCursor.trim().endsWith('>'))
+      ) {
+         insertion += '  ';
+         extraOffset = currentIndent.length + 3;
+      } else {
+         extraOffset = insertion.length;
+      }
+      
+      // Special case for split brackets where we just want the cursor in the middle
+      if ((charBefore === '{' && charAfter === '}') || (charBefore === '(' && charAfter === ')')) {
+           const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
+           onChange(newValue);
+           nextCursorPosRef.current = selectionStart + currentIndent.length + 3;
+      } else {
+           const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
+           onChange(newValue);
+           nextCursorPosRef.current = selectionStart + extraOffset;
+      }
     }
   };
 

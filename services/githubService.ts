@@ -19,7 +19,8 @@ export const validateToken = async (token: string) => {
 };
 
 export const getUserRepos = async (token: string) => {
-  const res = await fetch(`${BASE_URL}/user/repos?sort=updated&per_page=50`, {
+  // Sort by 'updated' in 'desc' order to show latest repos first
+  const res = await fetch(`${BASE_URL}/user/repos?sort=updated&direction=desc&per_page=50`, {
     headers: { Authorization: `token ${token}` },
   });
   if (!res.ok) throw new Error('Failed to fetch repos');

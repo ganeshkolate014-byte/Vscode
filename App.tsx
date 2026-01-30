@@ -16,7 +16,12 @@ import {
   Send, 
   Code2, 
   Maximize2,
-  Columns
+  Columns,
+  Save,
+  Check,
+  Menu,
+  Terminal,
+  GitBranch
 } from 'lucide-react';
 import { generateCodeHelp } from './services/geminiService';
 
@@ -68,10 +73,11 @@ export default function App() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [debouncedFiles, setDebouncedFiles] = useState<FileNode[]>(files);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSaved, setIsSaved] = useState(true);
+  const [cursorStats, setCursorStats] = useState({ line: 1, col: 1 });
 
   // Viewport Height Management for Mobile Keyboard
   const [viewportHeight, setViewportHeight] = useState('100%');
-  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   useEffect(() => {
     let timeoutId: any;
@@ -81,7 +87,6 @@ export default function App() {
             // Use visualViewport if available for precise keyboard handling
             if (window.visualViewport) {
                 setViewportHeight(`${window.visualViewport.height}px`);
-                setIsKeyboardOpen(window.visualViewport.height < window.screen.height * 0.75);
             } else {
                 setViewportHeight(`${window.innerHeight}px`);
             }
@@ -156,7 +161,6 @@ export default function App() {
         }
     } catch (err) {
       console.error("Error opening folder:", err);
-      // alert("Could not open folder.");
     }
   };
 
@@ -187,6 +191,7 @@ export default function App() {
   };
 
   const handleCodeChange = (newCode: string) => {
+    setIsSaved(false);
     setFiles(prev => {
         const updateNode = (nodes: FileNode[]): FileNode[] => {
             return nodes.map(node => {
@@ -200,12 +205,14 @@ export default function App() {
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
-        if (!activeFile || !activeFile.handle) return;
-        try {
-            const writable = await activeFile.handle.createWritable();
-            await writable.write(newCode);
-            await writable.close();
-        } catch (e) { console.error("Failed to save file:", e); }
+        setIsSaved(true);
+        if (activeFile && activeFile.handle) {
+            try {
+                const writable = await activeFile.handle.createWritable();
+                await writable.write(newCode);
+                await writable.close();
+            } catch (e) { console.error("Failed to save file:", e); }
+        }
     }, 1000);
   };
 
@@ -223,9 +230,11 @@ export default function App() {
   };
 
   const handleFileSelect = (node: FileNode) => {
-    if (!openFiles.includes(node.id)) setOpenFiles(prev => [...prev, node.id]);
-    setActiveFileId(node.id);
-    if (window.innerWidth < 768) setActiveSideBar(null);
+    if (node.type === 'file') {
+        if (!openFiles.includes(node.id)) setOpenFiles(prev => [...prev, node.id]);
+        setActiveFileId(node.id);
+        if (window.innerWidth < 768) setActiveSideBar(null);
+    }
   };
 
   const closeTab = (e: React.MouseEvent, id: string) => {
@@ -271,6 +280,20 @@ export default function App() {
     }
   };
 
+  const renameNode = (id: string, newName: string) => {
+      if (!newName.trim()) return;
+      setFiles(prev => {
+          const update = (nodes: FileNode[]): FileNode[] => {
+              return nodes.map(n => {
+                  if (n.id === id) return { ...n, name: newName, language: n.type === 'file' ? getLanguage(newName) : n.language };
+                  if (n.children) return { ...n, children: update(n.children) };
+                  return n;
+              });
+          };
+          return update(prev);
+      });
+  };
+
   const sendChatMessage = async () => {
     if (!chatInput.trim()) return;
     const userMsg: ChatMessage = { role: 'user', text: chatInput };
@@ -289,19 +312,6 @@ export default function App() {
       else setPreviewMode('hidden');
   };
   
-  const findActiveNode = (nodes: FileNode[], id: string): FileNode | undefined => {
-      for (const node of nodes) {
-          if (node.id === id) return node;
-          if (node.children) {
-              const found = findActiveNode(node.children, id);
-              if (found) return found;
-          }
-      }
-      return undefined;
-  };
-  
-  const currentActiveNode = useMemo(() => findActiveNode(files, activeFileId), [files, activeFileId]);
-
   // --- GitHub Integrations ---
   const handleGitImport = (nodes: FileNode[], repoName: string) => {
       setFiles(nodes);
@@ -316,8 +326,6 @@ export default function App() {
           setOpenFiles([firstFile.id]);
           setActiveFileId(firstFile.id);
       }
-      
-      // Auto-switch to files view on mobile after import
       setActiveSideBar('explorer');
   };
 
@@ -335,193 +343,222 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col bg-vscode-bg text-vscode-fg font-sans w-full" style={{ height: viewportHeight, overflow: 'hidden' }}>
-      
-      {/* 1. Main Workspace Area */}
-      <div className="flex-1 flex overflow-hidden relative">
-        
-        {/* A. Activity Bar */}
-        <aside className="hidden md:flex flex-col w-12 bg-vscode-activity items-center py-2 gap-4 border-r border-vscode-bg shrink-0 z-20">
-            <ActivityIcon icon={<Files size={24} />} active={activeSideBar === 'explorer'} onClick={() => setActiveSideBar(activeSideBar === 'explorer' ? null : 'explorer')} />
-            <ActivityIcon icon={<Search size={24} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
-            <ActivityIcon icon={<GitGraph size={24} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
-            <ActivityIcon icon={<MessageSquare size={24} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
-            <div className="flex-1" />
-            <ActivityIcon icon={<Settings size={24} />} active={false} onClick={() => {}} />
-        </aside>
+    <div 
+        className="flex flex-col w-full bg-vscode-bg text-vscode-fg overflow-hidden fixed inset-0"
+        style={{ height: viewportHeight }}
+    >
+      {/* 1. Header (Tabs & Actions) */}
+      <div className="h-10 flex bg-vscode-tabInactive shrink-0 items-center overflow-x-auto no-scrollbar border-b border-vscode-bg">
+        {/* Toggle Sidebar (Mobile) */}
+        <button 
+           className="px-3 h-full hover:bg-vscode-activity flex items-center justify-center md:hidden border-r border-vscode-bg"
+           onClick={() => setActiveSideBar(activeSideBar ? null : 'explorer')}
+        >
+           <Menu size={16} />
+        </button>
 
-        {/* B. Side Bar */}
-        {activeSideBar && (
-          <div className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all ${activeSideBar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${activeSideBar === 'ai' ? 'w-full md:w-80' : 'w-64'}`}>
-             
-             {activeSideBar === 'explorer' && (
-               <FileExplorer 
-                 nodes={files} 
-                 activeFileId={activeFileId} 
-                 onFileSelect={handleFileSelect} 
-                 onToggleFolder={toggleFolder}
-                 onCreateNode={createFile}
-                 onDeleteNode={deleteNode}
-                 onOpenFolder={handleOpenFolder}
-               />
-             )}
-
-             {activeSideBar === 'git' && (
-               <GitPanel 
-                 files={files}
-                 onImport={handleGitImport}
-                 onUpdateFileNode={handleUpdateFileNode}
-               />
-             )}
-
-             {activeSideBar === 'ai' && (
-                <div className="flex flex-col h-full bg-vscode-sidebar">
-                    <div className="p-3 uppercase text-xs font-bold text-gray-400 border-b border-vscode-activity flex justify-between">
-                        <span>AI Assistant</span>
-                        <button onClick={() => setActiveSideBar(null)} className="md:hidden"><X size={16}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {chatMessages.map((msg, idx) => (
-                            <div key={idx} className={`p-2 rounded text-sm ${msg.role === 'user' ? 'bg-vscode-accent text-white self-end ml-4' : 'bg-vscode-input text-gray-200 mr-4'}`}>
-                                {msg.text}
-                            </div>
-                        ))}
-                        {isChatLoading && <div className="text-xs text-gray-500 animate-pulse">Thinking...</div>}
-                    </div>
-                    <div className="p-2 border-t border-vscode-activity flex gap-2">
-                        <input 
-                            className="flex-1 bg-vscode-input border border-vscode-border rounded p-2 text-sm outline-none focus:border-vscode-accent"
-                            placeholder="Ask AI..."
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
-                        />
-                        <button onClick={sendChatMessage} className="p-2 bg-vscode-accent rounded text-white"><Send size={16}/></button>
-                    </div>
-                </div>
-             )}
-             <div className="md:hidden absolute top-0 -right-12 w-12 h-full" onClick={() => setActiveSideBar(null)} />
-          </div>
-        )}
-
-        {/* C. Editor & Preview Group */}
-        <div className="flex-1 flex flex-col min-w-0 bg-vscode-bg relative">
-          
-          {/* C1. Tabs Header */}
-          <div className="flex bg-vscode-sidebar overflow-x-auto no-scrollbar h-9 shrink-0 border-b border-black">
-             {openFiles.map(fid => {
-                 const node = findActiveNode(files, fid);
-                 if (!node) return null;
-                 const isActive = activeFileId === fid;
-                 return (
-                     <div 
-                        key={fid}
-                        onClick={() => setActiveFileId(fid)}
-                        className={`flex items-center px-3 min-w-[100px] max-w-[150px] border-r border-vscode-border cursor-pointer select-none group ${isActive ? 'bg-vscode-tabActive text-white border-t-2 border-t-vscode-accent' : 'bg-vscode-tabInactive text-gray-400 hover:bg-vscode-bg'}`}
-                     >
-                        <span className="truncate text-xs flex-1 mr-2">{node.name}</span>
+        {/* Tabs */}
+        <div className="flex-1 flex overflow-x-auto no-scrollbar h-full">
+            {openFiles.map(fileId => {
+                const node = (function find(nodes): FileNode | undefined {
+                    for(const n of nodes) {
+                        if(n.id === fileId) return n;
+                        if(n.children) { const f = find(n.children); if(f) return f; }
+                    }
+                })(files);
+                
+                if (!node) return null;
+                const isActive = activeFileId === node.id;
+                
+                return (
+                    <div 
+                        key={node.id}
+                        onClick={() => { setActiveFileId(node.id); if(window.innerWidth < 768) setActiveSideBar(null); }}
+                        className={`
+                            group flex items-center gap-2 px-3 min-w-[120px] max-w-[200px] h-full text-xs cursor-pointer select-none border-r border-vscode-bg
+                            ${isActive ? 'bg-vscode-bg text-white border-t-2 border-t-vscode-accent' : 'bg-vscode-tabInactive text-gray-400 hover:bg-vscode-activity'}
+                        `}
+                    >
+                        <span className={`w-2 h-2 rounded-full ${isSaved ? 'hidden' : isActive ? 'bg-white' : 'bg-gray-400'} shrink-0`} />
+                        <span className="truncate flex-1">{node.name}</span>
                         <button 
-                            onClick={(e) => closeTab(e, fid)} 
-                            className={`opacity-0 group-hover:opacity-100 p-0.5 rounded-sm hover:bg-gray-600 ${isActive ? 'opacity-100' : ''}`}
+                            onClick={(e) => closeTab(e, node.id)}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-gray-600 rounded"
                         >
-                            <X size={12} />
+                            <X size={12}/>
                         </button>
-                     </div>
-                 );
-             })}
-             
-             {/* Right Controls in Tab Bar */}
-             <div className="flex-1 bg-vscode-sidebar border-b border-black flex items-center justify-end px-2 gap-2">
-                 <button 
-                    onClick={togglePreviewMode} 
-                    className={`p-1 rounded hover:bg-gray-700 ${previewMode !== 'hidden' ? 'text-vscode-accent' : 'text-gray-400'}`}
-                    title="Toggle Preview Mode"
-                 >
-                    {previewMode === 'split' ? <Columns size={16} /> : previewMode === 'full' ? <Maximize2 size={16} /> : <Play size={16} />}
-                 </button>
-             </div>
-          </div>
-
-          {/* C2. Content Area (Editor + Preview) */}
-          <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
-             
-             {/* EDITOR PANE */}
-             <div className={`${previewMode === 'full' ? 'hidden' : 'flex-1'} relative h-full border-r border-black`}>
-                {currentActiveNode ? (
-                    <CodeEditor 
-                        code={currentActiveNode.content || ''} 
-                        language={currentActiveNode.language || 'html'} 
-                        onChange={handleCodeChange}
-                    />
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4">
-                        <Code2 size={48} className="opacity-20" />
-                        <p className="text-sm">Select a file or Open Folder</p>
                     </div>
-                )}
-             </div>
-
-             {/* PREVIEW PANE */}
-             {(previewMode !== 'hidden') && (
-                <div className={`${previewMode === 'split' ? 'h-1/2 md:h-full md:w-1/2' : 'absolute inset-0 z-40'} bg-white flex flex-col border-t md:border-t-0 md:border-l border-black`}>
-                   <div className="h-6 bg-gray-100 border-b flex items-center px-4 text-[10px] text-gray-600 justify-between shrink-0">
-                      <span>Live Preview</span>
-                      <button onClick={() => setPreviewMode('hidden')}><X size={12}/></button>
-                   </div>
-                   <div className="flex-1 relative">
-                        <LivePreview 
-                            html={getFileContent('index.html')} 
-                            css={getFileContent('style.css')} 
-                            js={getFileContent('script.js')} 
-                        />
-                   </div>
-                </div>
-             )}
-          </div>
+                );
+            })}
+        </div>
+        
+        {/* Top Right Actions */}
+        <div className="flex items-center h-full px-2 gap-1 bg-vscode-tabInactive">
+            <button onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} className={`p-2 hover:bg-vscode-activity rounded ${activeSideBar === 'git' ? 'text-white' : 'text-gray-400'}`}>
+                <GitGraph size={16} />
+            </button>
+            <button onClick={() => setActiveSideBar(activeSideBar === 'chat' ? null : 'chat')} className={`p-2 hover:bg-vscode-activity rounded ${activeSideBar === 'chat' ? 'text-white' : 'text-gray-400'}`}>
+                <MessageSquare size={16} />
+            </button>
+            <button onClick={togglePreviewMode} className={`p-2 hover:bg-vscode-activity rounded ${previewMode !== 'hidden' ? 'text-green-400' : 'text-gray-400'}`}>
+                {previewMode === 'hidden' ? <Play size={16} /> : previewMode === 'split' ? <Columns size={16}/> : <Maximize2 size={16} />}
+            </button>
         </div>
       </div>
 
-      {/* 2. Activity Bar (Mobile Bottom) - Hide when Keyboard Open to give space */}
-      {!isKeyboardOpen && (
-        <div className="md:hidden h-12 bg-vscode-activity flex justify-around items-center border-t border-black shrink-0 z-40">
-           <ActivityIcon icon={<Files size={20} />} active={activeSideBar === 'explorer'} onClick={() => setActiveSideBar(activeSideBar === 'explorer' ? null : 'explorer')} />
-           <ActivityIcon icon={<Search size={20} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
-           
-           <div 
-            className="w-12 h-12 -mt-6 bg-vscode-accent rounded-full flex items-center justify-center shadow-lg border-4 border-vscode-bg cursor-pointer" 
-            onClick={togglePreviewMode}
-           >
-               {previewMode === 'hidden' ? <Play size={24} className="text-white ml-1" /> : <Code2 size={24} className="text-white" />}
-           </div>
-           
-           <ActivityIcon icon={<GitGraph size={20} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
-           <ActivityIcon icon={<MessageSquare size={20} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
-        </div>
-      )}
+      {/* 2. Main Workspace */}
+      <div className="flex-1 flex overflow-hidden relative">
+          
+          {/* Sidebar Area */}
+          {(activeSideBar || (window.innerWidth >= 768)) && (
+             <div 
+                className={`
+                    absolute md:relative z-30 h-full bg-vscode-sidebar border-r border-vscode-activity transition-all duration-200 ease-in-out flex flex-col
+                    ${activeSideBar ? 'w-64 translate-x-0 shadow-2xl' : 'w-0 -translate-x-full md:w-12 md:translate-x-0'}
+                `}
+             >
+                 {/* Sidebar Content */}
+                 <div className={`flex-1 overflow-hidden flex flex-col ${!activeSideBar && 'hidden'}`}>
+                     {activeSideBar === 'explorer' && (
+                         <FileExplorer 
+                            nodes={debouncedFiles} 
+                            activeFileId={activeFileId} 
+                            onFileSelect={handleFileSelect}
+                            onToggleFolder={toggleFolder}
+                            onCreateNode={createFile}
+                            onDeleteNode={deleteNode}
+                            onRenameNode={renameNode}
+                            onOpenFolder={handleOpenFolder}
+                         />
+                     )}
+                     {activeSideBar === 'git' && (
+                         <GitPanel 
+                            files={files} 
+                            onImport={handleGitImport}
+                            onUpdateFileNode={handleUpdateFileNode}
+                         />
+                     )}
+                     {activeSideBar === 'chat' && (
+                         <div className="flex flex-col h-full">
+                             <div className="p-2 text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-vscode-activity">
+                                 AI Assistant
+                             </div>
+                             <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                                 {chatMessages.map((msg, i) => (
+                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                         <div className={`max-w-[85%] p-2 rounded text-xs ${msg.role === 'user' ? 'bg-vscode-accent text-white' : 'bg-vscode-activity text-gray-200'}`}>
+                                             {msg.text}
+                                         </div>
+                                     </div>
+                                 ))}
+                                 {isChatLoading && <div className="text-xs text-gray-500 italic">AI is thinking...</div>}
+                             </div>
+                             <div className="p-2 border-t border-vscode-activity flex gap-2">
+                                 <input 
+                                     className="flex-1 bg-vscode-input rounded px-2 py-1 text-xs outline-none focus:border focus:border-vscode-accent"
+                                     placeholder="Ask about your code..."
+                                     value={chatInput}
+                                     onChange={e => setChatInput(e.target.value)}
+                                     onKeyDown={e => e.key === 'Enter' && sendChatMessage()}
+                                 />
+                                 <button onClick={sendChatMessage} className="p-1.5 bg-vscode-accent rounded text-white">
+                                     <Send size={14} />
+                                 </button>
+                             </div>
+                         </div>
+                     )}
+                 </div>
 
-      {/* 3. Status Bar - Hide when Keyboard Open */}
-      {!isKeyboardOpen && (
-        <div className="h-6 bg-vscode-accent text-white flex items-center px-3 text-[11px] justify-between select-none shrink-0 z-50">
-          <div className="flex gap-4">
-              <span className="flex items-center gap-1"><Code2 size={10}/> {currentActiveNode ? 'Local File' : 'Main'}</span>
-              <span>Preview: {previewMode}</span>
+                 {/* Activity Bar (Desktop Icon Strip) */}
+                 <div className={`w-12 flex-col items-center py-2 gap-4 border-r border-vscode-activity bg-vscode-activity hidden md:flex ${activeSideBar ? 'hidden' : 'flex'}`}>
+                     <button onClick={() => setActiveSideBar('explorer')}><Files size={24} className="text-gray-400 hover:text-white" /></button>
+                     <button onClick={() => setActiveSideBar('git')}><GitGraph size={24} className="text-gray-400 hover:text-white" /></button>
+                     <button onClick={() => setActiveSideBar('chat')}><MessageSquare size={24} className="text-gray-400 hover:text-white" /></button>
+                     <div className="flex-1" />
+                     <Settings size={24} className="text-gray-400 hover:text-white cursor-pointer" />
+                 </div>
+             </div>
+          )}
+
+          {/* Editor & Preview Area */}
+          <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative bg-vscode-bg">
+              {/* Editor */}
+              <div 
+                className={`
+                    flex-1 relative flex flex-col min-h-0
+                    ${previewMode === 'full' ? 'hidden' : ''} 
+                    ${previewMode === 'split' ? 'h-1/2 md:h-full md:w-1/2 border-b md:border-b-0 md:border-r border-vscode-activity' : 'h-full'}
+                `}
+              >
+                 {activeFile ? (
+                     <CodeEditor 
+                        code={activeFile.content || ''} 
+                        language={activeFile.language || 'javascript'} 
+                        onChange={handleCodeChange}
+                        onCursorMove={(line, col) => setCursorStats({line, col})}
+                     />
+                 ) : (
+                     <div className="flex items-center justify-center h-full text-gray-500 text-sm flex-col gap-4">
+                         <Code2 size={48} className="opacity-20" />
+                         <p>Select a file to edit</p>
+                     </div>
+                 )}
+              </div>
+
+              {/* Preview */}
+              <div 
+                className={`
+                    bg-white flex-col
+                    ${previewMode === 'hidden' ? 'hidden' : 'flex'}
+                    ${previewMode === 'full' ? 'absolute inset-0 z-40' : 'h-1/2 md:h-full md:w-1/2'}
+                `}
+              >
+                  {previewMode === 'full' && (
+                      <button 
+                        onClick={() => setPreviewMode('split')}
+                        className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full z-50 hover:bg-black/70"
+                      >
+                          <X size={16} />
+                      </button>
+                  )}
+                  <LivePreview 
+                      html={getFileContent('index.html')} 
+                      css={getFileContent('style.css')} 
+                      js={getFileContent('script.js')} 
+                  />
+              </div>
           </div>
-          <div className="flex gap-4">
-               <span>Ln {currentActiveNode ? (currentActiveNode.content?.split('\n').length || 1) : 0}</span>
-               <span>{currentActiveNode?.language?.toUpperCase() || 'TXT'}</span>
+      </div>
+
+      {/* 3. Status Bar */}
+      <div className="h-6 bg-vscode-activity border-t border-vscode-border text-[11px] text-white flex items-center justify-between px-3 select-none shrink-0 z-50">
+          <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1 hover:bg-vscode-hover px-1 rounded cursor-pointer">
+                  <GitBranch size={10} />
+                  <span>main</span>
+              </div>
+              <div className="flex items-center gap-1">
+                 {isSaved ? <span className="flex items-center gap-1"><Check size={10}/> Saved</span> : <span className="flex items-center gap-1 text-yellow-500"><Save size={10}/> Unsaved</span>}
+              </div>
+              <div>
+                  0 Errors
+              </div>
           </div>
-        </div>
-      )}
+          <div className="flex items-center gap-4">
+              <div className="hover:bg-vscode-hover px-1 rounded cursor-pointer">
+                  Ln {cursorStats.line}, Col {cursorStats.col}
+              </div>
+              <div className="hover:bg-vscode-hover px-1 rounded cursor-pointer">
+                  Spaces: 2
+              </div>
+              <div className="hover:bg-vscode-hover px-1 rounded cursor-pointer">
+                  UTF-8
+              </div>
+              <div className="flex items-center gap-1 hover:bg-vscode-hover px-1 rounded cursor-pointer text-vscode-accent font-bold">
+                  {activeFile ? activeFile.language?.toUpperCase() : 'TXT'}
+              </div>
+          </div>
+      </div>
     </div>
   );
 }
-
-const ActivityIcon = ({ icon, active, onClick }: { icon: React.ReactNode, active: boolean, onClick: () => void }) => (
-    <button 
-        onClick={onClick}
-        className={`p-2 relative group ${active ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-    >
-        {active && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-vscode-accent md:block hidden" />}
-        {icon}
-    </button>
-);
