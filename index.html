@@ -5,8 +5,7 @@
     <!-- interactive-widget=resizes-content forces the viewport to shrink when keyboard opens on Android -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>DroidCoder AI</title>
-    <!-- Tailwind CDN is kept for simplicity, though standard projects usually install it via PostCSS. 
-         Keeping CDN ensures your existing styles work immediately without extra CSS file setup. -->
+    <!-- Tailwind CDN is kept for simplicity. -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -37,9 +36,103 @@
     </script>
     <!-- Import Fira Code for perfect alignment -->
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <!-- PrismJS for Syntax Highlighting -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    
     <style>
+      /* VS Code Dark+ Theme for PrismJS - Custom Implementation */
+      
+      /* Base Text */
+      code[class*="language-"],
+      pre[class*="language-"] {
+        color: #d4d4d4; /* Default Text Color */
+        text-shadow: none;
+        font-family: 'Fira Code', monospace;
+        font-size: 14px;
+        line-height: 21px;
+        direction: ltr;
+        text-align: left;
+        white-space: pre;
+        word-spacing: normal;
+        word-break: normal;
+        tab-size: 2;
+        hyphens: none;
+      }
+
+      /* Comments */
+      .token.comment,
+      .token.prolog,
+      .token.doctype,
+      .token.cdata {
+        color: #6a9955;
+      }
+
+      /* Punctuation */
+      .token.punctuation {
+        color: #d4d4d4;
+      }
+
+      /* General Keywords (pink/purple) */
+      .token.keyword,
+      .token.atrule {
+        color: #c586c0;
+      }
+
+      /* Functions (yellow) */
+      .token.function,
+      .token.class-name {
+        color: #dcdcaa;
+      }
+
+      /* HTML/XML Tags (blue) */
+      .token.tag,
+      .token.tag .token.punctuation {
+        color: #569cd6;
+      }
+
+      /* Attributes (light blue) */
+      .token.attr-name {
+        color: #9cdcfe;
+      }
+
+      /* Strings (orange) */
+      .token.string,
+      .token.attr-value {
+        color: #ce9178;
+      }
+
+      /* Numbers/Booleans (light green/blue) */
+      .token.number,
+      .token.boolean {
+        color: #b5cea8;
+      }
+
+      /* CSS Specifics */
+      .language-css .token.selector {
+        color: #d7ba7d; /* Yellow-ish for selectors */
+      }
+      .language-css .token.property {
+        color: #9cdcfe; /* Light blue for properties */
+      }
+      .language-css .token.function {
+        color: #dcdcaa;
+      }
+      .language-css .token.punctuation {
+        color: #d4d4d4;
+      }
+
+      /* JS Specifics */
+      .language-javascript .token.operator {
+        color: #d4d4d4;
+      }
+      .language-javascript .token.keyword {
+        color: #c586c0;
+      }
+      .language-javascript .token.function {
+        color: #dcdcaa;
+      }
+      .language-javascript .token.string {
+        color: #ce9178;
+      }
+      
       /* Custom Scrollbar to match VS Code */
       ::-webkit-scrollbar {
         width: 10px;
@@ -56,7 +149,6 @@
         background: #4f4f4f;
       }
       
-      /* Utility to hide scrollbar but keep functionality */
       .no-scrollbar::-webkit-scrollbar {
         display: none;
       }
@@ -65,11 +157,10 @@
         scrollbar-width: none;
       }
       
-      /* Editor specific overrides */
       html {
-        -webkit-text-size-adjust: 100%; /* Prevent font scaling in landscape */
+        -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
-        background-color: #1e1e1e; /* FIXED: Prevents white bottom bar on scroll bounce */
+        background-color: #1e1e1e;
       }
       html, body {
         height: 100%;
@@ -77,8 +168,7 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background-color: #1e1e1e; /* FIXED: Uniform background */
-        /* Prevent bounce effect on iOS and ensure full height on Android by locking to viewport */
+        background-color: #1e1e1e;
         position: fixed; 
         top: 0;
         left: 0;
@@ -92,12 +182,10 @@
       }
       code, pre, textarea.code-input {
         font-family: 'Fira Code', monospace !important;
-        font-variant-ligatures: none; /* Helps alignment */
+        font-variant-ligatures: none;
       }
 
-      /* FIX: Override Prism Theme Background to transparent. 
-         This prevents the 'split screen' look where the code area has a slightly different 
-         grey background than the editor container. */
+      /* Override background for highlighting to ensure transparency over editor */
       code[class*="language-"],
       pre[class*="language-"] {
         background-color: transparent !important;
@@ -133,7 +221,6 @@
 </head>
   <body class="bg-vscode-bg text-vscode-fg selection:bg-vscode-accent selection:text-white">
     <div id="root" class="h-full w-full bg-vscode-bg"></div>
-    <!-- Vite Entry Point -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
