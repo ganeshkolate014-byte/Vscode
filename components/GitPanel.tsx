@@ -1,22 +1,31 @@
 
 import React, { useState, useEffect } from 'react';
-import { Github, LogIn, Download, Upload, RefreshCw, LogOut, Loader2, GitBranch, AlertCircle, CheckCircle2, Plus, Lock, Globe, X } from 'lucide-react';
+import { Github, LogIn, Download, Upload, LogOut, Loader2, GitBranch, AlertCircle, CheckCircle2, Plus, Lock, Globe, X, Link as LinkIcon, ArrowRight, Unplug } from 'lucide-react';
 import { validateToken, getUserRepos, getRepoTree, getBlob, updateFile, createRepo } from '../services/githubService';
-import { FileNode } from '../types';
+import { FileNode, RepoConfig } from '../types';
 
 interface GitPanelProps {
   files: FileNode[];
   onImport: (nodes: FileNode[], repoName: string) => void;
   onUpdateFileNode: (id: string, sha: string) => void;
+  repoConfig: RepoConfig | null;
+  onSetRepoConfig: (config: RepoConfig | null) => void;
 }
 
-export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFileNode }) => {
+export const GitPanel: React.FC<GitPanelProps> = ({ 
+  files, 
+  onImport, 
+  onUpdateFileNode, 
+  repoConfig, 
+  onSetRepoConfig 
+}) => {
   const [token, setToken] = useState(localStorage.getItem('gh_token') || '');
   const [user, setUser] = useState<any>(null);
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeRepo, setActiveRepo] = useState<any>(null);
-  const [view, setView] = useState<'login' | 'repos' | 'sync'>('login');
+  const [view, setView] = useState<'login' | 'repos' | 'sync'>(
+      !localStorage.getItem('gh_token') ? 'login' : (repoConfig ? 'sync' : 'repos')
+  );
   const [status, setStatus] = useState<string>('');
   const [pushProgress, setPushProgress] = useState({ current: 0, total: 0 });
   
@@ -30,6 +39,13 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
     if (token) handleLogin(token, true);
   }, []);
 
+  // Effect to switch to sync view if repoConfig is externally set (e.g., after Clone)
+  useEffect(() => {
+      if (repoConfig && token) {
+          setView('sync');
+      }
+  }, [repoConfig, token]);
+
   const handleLogin = async (inputToken: string, isAuto = false) => {
     setLoading(true);
     setStatus('');
@@ -41,9 +57,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
       
       const reposData = await getUserRepos(inputToken);
       setRepos(reposData);
-      setView('repos');
+      
+      // If we already have a linked repo, go to sync, else list
+      if (repoConfig) setView('sync');
+      else setView('repos');
+
     } catch (err) {
       if (!isAuto) setStatus('Invalid Token');
+      else if (isAuto) {
+          // If auto login fails, clear everything
+          localStorage.removeItem('gh_token');
+          setToken('');
+      }
     } finally {
       setLoading(false);
     }
@@ -54,7 +79,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
     setToken('');
     setUser(null);
     setRepos([]);
-    setActiveRepo(null);
+    onSetRepoConfig(null);
     setView('login');
   };
 
@@ -62,13 +87,23 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
       if (!newRepoName.trim()) return;
       setLoading(true);
       try {
-          const newRepo = await createRepo(token, newRepoName, isPrivate);
+          const hasFiles = files.length > 0;
+          const newRepo = await createRepo(token, newRepoName, isPrivate, !hasFiles);
+          
           setRepos(prev => [newRepo, ...prev]);
-          setActiveRepo(newRepo);
+          
+          onSetRepoConfig({
+             owner: newRepo.owner.login,
+             name: newRepo.name,
+             branch: newRepo.default_branch,
+             html_url: newRepo.html_url,
+             private: newRepo.private
+          });
+
           setShowCreateForm(false);
           setNewRepoName('');
           setView('sync');
-          setStatus('Repository created! You can now push your files.');
+          setStatus('Repository created! Ready to push.');
       } catch (err: any) {
           setStatus(`Error: ${err.message}`);
       } finally {
@@ -77,7 +112,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
   };
 
   const handleClone = async (repo: any) => {
-    setActiveRepo(repo);
+    if (!confirm('This will overwrite your current local files. Continue?')) return;
+    
     setLoading(true);
     setStatus('Fetching file structure...');
     
@@ -85,12 +121,12 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
       const treeData = await getRepoTree(token, repo.owner.login, repo.name, repo.default_branch);
       const tree = treeData.tree;
       
-      setStatus(`Downloading ${tree.length} files... this may take time.`);
+      setStatus(`Downloading ${tree.length} files...`);
 
       const nodes: FileNode[] = [];
       const nodeMap = new Map<string, FileNode>();
 
-      // First pass: create folders and file placeholders
+      // Structure parsing logic...
       tree.forEach((item: any) => {
           const parts = item.path.split('/');
           const name = parts.pop();
@@ -119,7 +155,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
           }
       });
 
-      const textExtensions = ['.html', '.css', '.js', '.ts', '.tsx', '.json', '.md', '.txt', '.jsx'];
+      const textExtensions = ['.html', '.css', '.js', '.ts', '.tsx', '.json', '.md', '.txt', '.jsx', '.svg'];
       const fileItems = tree.filter((t: any) => t.type === 'blob' && textExtensions.some(ext => t.path.endsWith(ext)));
       
       let fetchedCount = 0;
@@ -141,72 +177,111 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
           setStatus(`Downloaded ${Math.min(fetchedCount, totalToFetch)}/${totalToFetch} files`);
       }
 
+      onSetRepoConfig({
+         owner: repo.owner.login,
+         name: repo.name,
+         branch: repo.default_branch,
+         html_url: repo.html_url,
+         private: repo.private
+      });
+
       onImport(nodes, repo.name);
-      setView('sync');
-      setStatus('Repository cloned successfully!');
+      // Note: Component likely unmounts here as sideBar switches to 'explorer'
+      // But repoConfig is now persisted in App, so returning later will show 'sync' view.
     } catch (err: any) {
       console.error(err);
       setStatus(`Clone failed: ${err.message}`);
-      setActiveRepo(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePush = async () => {
-    if (!activeRepo) return;
-    setLoading(true);
-    setStatus('Starting push...');
-    
-    // Recursive function to get all files with their computed Git paths
-    // This allows us to handle folder structures created locally
-    const getFilesToPush = (nodes: FileNode[], parentPath = ''): { file: FileNode, path: string }[] => {
-        let result: { file: FileNode, path: string }[] = [];
-        nodes.forEach(node => {
-            // Build the path: if parentPath exists, append '/', otherwise just name
-            const currentPath = parentPath ? `${parentPath}/${node.name}` : node.name;
-            
-            if (node.type === 'file') {
-                result.push({ file: node, path: currentPath });
-            } else if (node.children) {
-                result = [...result, ...getFilesToPush(node.children, currentPath)];
-            }
-        });
-        return result;
-    };
-    
-    const allFiles = getFilesToPush(files);
-    setPushProgress({ current: 0, total: allFiles.length });
-    
-    let successCount = 0;
-    let failCount = 0;
+  const handleLink = (repo: any) => {
+      onSetRepoConfig({
+         owner: repo.owner.login,
+         name: repo.name,
+         branch: repo.default_branch,
+         html_url: repo.html_url,
+         private: repo.private
+      });
+      setView('sync');
+      setStatus('Linked. Ready to push local files.');
+  };
 
-    for (let i = 0; i < allFiles.length; i++) {
-        const { file, path } = allFiles[i];
-        if (typeof file.content !== 'string') continue;
-        
-        try {
-            const res = await updateFile(
-                token, 
-                activeRepo.owner.login, 
-                activeRepo.name, 
-                path, // Use the computed path, not the ID
-                file.content, 
-                file.sha, // If undefined, GitHub creates new. If defined, it updates.
-                commitMsg || `Update ${path}`
-            );
-            
-            onUpdateFileNode(file.id, res.content.sha);
-            successCount++;
-        } catch (e) {
-            console.error('Push error', path, e);
-            failCount++;
-        }
-        setPushProgress({ current: i + 1, total: allFiles.length });
-    }
+  const handleUnlink = () => {
+      if (confirm('Disconnect from this repository? Local files will remain.')) {
+          onSetRepoConfig(null);
+          setView('repos');
+      }
+  };
+
+  const handlePush = async () => {
+    if (!repoConfig) return;
+    setLoading(true);
+    setStatus('Preparing push...');
     
-    setLoading(false);
-    setStatus(`Commit & Push complete: ${successCount} files synced.`);
+    try {
+        let remoteFileMap = new Map<string, string>();
+        try {
+            const treeData = await getRepoTree(token, repoConfig.owner, repoConfig.name, repoConfig.branch || 'main');
+            treeData.tree.forEach((item: any) => {
+                if (item.type === 'blob') remoteFileMap.set(item.path, item.sha);
+            });
+        } catch (e) {
+            console.log("Empty repo or branch not found, assuming fresh push.");
+        }
+
+        const getFilesToPush = (nodes: FileNode[], parentPath = ''): { file: FileNode, path: string }[] => {
+            let result: { file: FileNode, path: string }[] = [];
+            nodes.forEach(node => {
+                const currentPath = parentPath ? `${parentPath}/${node.name}` : node.name;
+                if (node.type === 'file') {
+                    result.push({ file: node, path: currentPath });
+                } else if (node.children) {
+                    result = [...result, ...getFilesToPush(node.children, currentPath)];
+                }
+            });
+            return result;
+        };
+        
+        const allFiles = getFilesToPush(files);
+        setPushProgress({ current: 0, total: allFiles.length });
+        
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < allFiles.length; i++) {
+            const { file, path } = allFiles[i];
+            if (typeof file.content !== 'string') continue;
+            
+            const shaToUse = remoteFileMap.get(path) || file.sha;
+
+            try {
+                const res = await updateFile(
+                    token, 
+                    repoConfig.owner, 
+                    repoConfig.name, 
+                    path, 
+                    file.content, 
+                    shaToUse,
+                    commitMsg || `Update ${path}`
+                );
+                
+                onUpdateFileNode(file.id, res.content.sha);
+                successCount++;
+            } catch (e) {
+                console.error('Push error', path, e);
+                failCount++;
+            }
+            setPushProgress({ current: i + 1, total: allFiles.length });
+        }
+        
+        setStatus(`Push complete: ${successCount} sent, ${failCount} failed.`);
+    } catch (e: any) {
+        setStatus(`Push failed: ${e.message}`);
+    } finally {
+        setLoading(false);
+    }
   };
 
   if (view === 'login') {
@@ -250,55 +325,58 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
           <button onClick={handleLogout} title="Logout" className="hover:text-white"><LogOut size={14}/></button>
       </div>
 
-      {view === 'sync' && activeRepo && (
-          <div className="p-4 bg-vscode-bg/50 border-b border-vscode-activity flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                  <GitBranch size={16} className="text-vscode-accent" />
-                  <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm truncate">{activeRepo.name}</div>
-                      <div className="text-[10px] text-gray-400 truncate">{activeRepo.html_url}</div>
-                  </div>
-              </div>
-              
-              <div className="flex flex-col gap-2">
-                  <input 
-                      className="bg-vscode-input border border-vscode-border p-1.5 rounded text-xs text-white placeholder-gray-500 outline-none focus:border-vscode-accent"
-                      placeholder="Commit message..."
-                      value={commitMsg}
-                      onChange={e => setCommitMsg(e.target.value)}
-                  />
-                  <div className="flex gap-2">
-                    <button 
-                        onClick={() => setView('repos')} 
-                        className="flex-1 bg-vscode-input text-xs py-1.5 rounded hover:bg-vscode-hover border border-vscode-border"
-                    >
-                        Repos
+      {view === 'sync' && repoConfig && (
+          <div className="flex-1 flex flex-col">
+              <div className="p-4 bg-vscode-bg/50 border-b border-vscode-activity flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                    <GitBranch size={16} className="text-vscode-accent" />
+                    <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm truncate">{repoConfig.name}</div>
+                        <div className="text-[10px] text-gray-400 truncate">{repoConfig.html_url}</div>
+                    </div>
+                    <button onClick={handleUnlink} className="text-xs bg-vscode-input px-2 py-1 rounded hover:text-red-400 flex items-center gap-1" title="Disconnect">
+                        <Unplug size={12} />
                     </button>
+                </div>
+                
+                <div className="flex flex-col gap-2 mt-2">
+                    <label className="text-[10px] uppercase text-gray-500 font-bold">Sync Changes</label>
+                    <input 
+                        className="bg-vscode-input border border-vscode-border p-2 rounded text-xs text-white placeholder-gray-500 outline-none focus:border-vscode-accent"
+                        placeholder="Commit message (e.g. Fixed bug)"
+                        value={commitMsg}
+                        onChange={e => setCommitMsg(e.target.value)}
+                    />
                     <button 
                         onClick={handlePush}
                         disabled={loading}
-                        className="flex-1 bg-green-700/80 text-white text-xs py-1.5 rounded hover:bg-green-600 flex items-center justify-center gap-1"
+                        className="w-full bg-green-700/80 text-white text-sm py-2 rounded hover:bg-green-600 flex items-center justify-center gap-2 font-bold shadow-md active:scale-95 transition-all"
                     >
-                        {loading ? <Loader2 size={12} className="animate-spin"/> : <Upload size={12} />}
-                        Commit & Push
+                        {loading ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14} />}
+                        Push Local Files
                     </button>
-                  </div>
-              </div>
+                </div>
 
-              {status && (
-                  <div className={`text-[10px] flex items-center gap-1 ${status.includes('error') || status.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
-                      {status.includes('failed') ? <AlertCircle size={10}/> : <CheckCircle2 size={10}/>}
-                      {status}
-                  </div>
-              )}
-               {loading && pushProgress.total > 0 && (
-                  <div className="w-full bg-vscode-activity h-1 rounded overflow-hidden">
-                      <div 
-                        className="bg-green-500 h-full transition-all duration-200"
-                        style={{ width: `${(pushProgress.current / pushProgress.total) * 100}%` }}
-                      />
-                  </div>
-              )}
+                {status && (
+                    <div className={`text-[11px] p-2 rounded bg-vscode-input border border-vscode-border flex items-center gap-2 ${status.includes('error') || status.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
+                        {status.includes('failed') ? <AlertCircle size={12}/> : <CheckCircle2 size={12}/>}
+                        <span className="flex-1 break-words">{status}</span>
+                    </div>
+                )}
+                
+                {loading && pushProgress.total > 0 && (
+                    <div className="w-full bg-vscode-activity h-1 rounded overflow-hidden">
+                        <div 
+                            className="bg-green-500 h-full transition-all duration-200"
+                            style={{ width: `${(pushProgress.current / pushProgress.total) * 100}%` }}
+                        />
+                    </div>
+                )}
+              </div>
+              <div className="flex-1 p-4 text-xs text-gray-500 overflow-y-auto">
+                   <p className="mb-2"><strong>Connected to:</strong> <span className="text-white">{repoConfig.name}</span></p>
+                   <p className="mb-2">Changes made in the editor will be pushed to this repository.</p>
+              </div>
           </div>
       )}
 
@@ -310,36 +388,38 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
                     <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Repositories</div>
                     <button 
                         onClick={() => setShowCreateForm(!showCreateForm)}
-                        className="p-1 hover:bg-vscode-hover rounded text-vscode-accent"
+                        className="p-1 hover:bg-vscode-hover rounded text-vscode-accent flex items-center gap-1 text-[10px]"
                         title="Create New Repo"
                     >
-                        <Plus size={16} />
+                        <Plus size={14} /> New
                     </button>
                  </div>
 
                  {/* Create Repo Form */}
                  {showCreateForm && (
-                     <div className="mx-2 mb-3 p-3 bg-vscode-activity rounded border border-vscode-border flex flex-col gap-2">
+                     <div className="mx-2 mb-3 p-3 bg-vscode-activity rounded border border-vscode-border flex flex-col gap-2 shadow-lg">
                          <div className="flex justify-between items-center text-xs font-bold">
-                             <span>New Repository</span>
+                             <span>Create Repository</span>
                              <button onClick={() => setShowCreateForm(false)}><X size={12}/></button>
                          </div>
                          <input 
                             className="bg-vscode-input border border-vscode-border p-1.5 rounded text-xs text-white outline-none"
-                            placeholder="Repository Name"
+                            placeholder="my-new-project"
                             value={newRepoName}
                             onChange={e => setNewRepoName(e.target.value)}
                          />
-                         <div className="flex items-center gap-2 text-xs cursor-pointer" onClick={() => setIsPrivate(!isPrivate)}>
-                             <div className={`w-3 h-3 border border-gray-400 rounded-sm ${isPrivate ? 'bg-vscode-accent border-vscode-accent' : ''}`} />
-                             <span>Private Repository</span>
+                         <div className="flex items-center gap-2 text-xs cursor-pointer select-none" onClick={() => setIsPrivate(!isPrivate)}>
+                             <div className={`w-3 h-3 border border-gray-400 rounded-sm flex items-center justify-center ${isPrivate ? 'bg-vscode-accent border-vscode-accent' : ''}`}>
+                                 {isPrivate && <div className="w-1.5 h-1.5 bg-white rounded-sm" />}
+                             </div>
+                             <span>Private</span>
                          </div>
                          <button 
                             onClick={handleCreateRepo}
                             disabled={loading || !newRepoName}
-                            className="bg-vscode-accent text-white py-1 rounded text-xs mt-1 disabled:opacity-50"
+                            className="bg-vscode-accent text-white py-1.5 rounded text-xs mt-1 disabled:opacity-50 font-bold"
                          >
-                            {loading ? 'Creating...' : 'Create Repository'}
+                            {loading ? 'Creating...' : 'Create & Link'}
                          </button>
                      </div>
                  )}
@@ -347,19 +427,35 @@ export const GitPanel: React.FC<GitPanelProps> = ({ files, onImport, onUpdateFil
                  {repos.map(repo => (
                      <div 
                         key={repo.id}
-                        onClick={() => handleClone(repo)}
-                        className="flex items-center gap-2 p-2 hover:bg-vscode-hover cursor-pointer rounded-sm group"
+                        className="flex flex-col gap-2 p-2 hover:bg-vscode-hover rounded-sm group border-b border-transparent hover:border-vscode-activity transition-all"
                      >
-                        <div className="bg-vscode-activity p-1.5 rounded">
-                            {repo.private ? <Lock size={12} className="text-yellow-500"/> : <Globe size={12} className="text-gray-400"/>}
+                        <div className="flex items-center gap-2">
+                            <div className="bg-vscode-activity p-1.5 rounded text-gray-400">
+                                {repo.private ? <Lock size={12} className="text-yellow-500"/> : <Globe size={12}/>}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm truncate font-medium text-gray-200">{repo.name}</div>
+                                <div className="text-[10px] text-gray-500">{new Date(repo.updated_at).toLocaleDateString()}</div>
+                            </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm truncate font-medium">{repo.name}</div>
-                            <div className="text-[10px] text-gray-500">{repo.default_branch} • {new Date(repo.updated_at).toLocaleDateString()}</div>
+                        
+                        {/* Actions */}
+                        <div className="flex gap-2 pl-8">
+                            <button 
+                                onClick={() => handleLink(repo)}
+                                className="flex-1 text-[10px] bg-vscode-input hover:bg-vscode-accent hover:text-white py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                                title="Use this repo for current files"
+                            >
+                                <LinkIcon size={10} /> Link (Push)
+                            </button>
+                            <button 
+                                onClick={() => handleClone(repo)}
+                                className="flex-1 text-[10px] bg-vscode-input hover:bg-vscode-accent hover:text-white py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                                title="Overwrite local with repo files"
+                            >
+                                <Download size={10} /> Clone (Pull)
+                            </button>
                         </div>
-                        <button className="opacity-0 group-hover:opacity-100 text-vscode-accent">
-                            <Download size={14} />
-                        </button>
                      </div>
                  ))}
              </div>

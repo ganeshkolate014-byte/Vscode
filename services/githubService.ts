@@ -27,7 +27,7 @@ export const getUserRepos = async (token: string) => {
   return await res.json();
 };
 
-export const createRepo = async (token: string, name: string, isPrivate: boolean) => {
+export const createRepo = async (token: string, name: string, isPrivate: boolean, autoInit: boolean = true) => {
   const res = await fetch(`${BASE_URL}/user/repos`, {
     method: 'POST',
     headers: { 
@@ -37,7 +37,7 @@ export const createRepo = async (token: string, name: string, isPrivate: boolean
     body: JSON.stringify({ 
       name, 
       private: isPrivate,
-      auto_init: true, // Initialize with README to ensure main branch exists
+      auto_init: autoInit, 
       description: 'Created with DroidCoder AI'
     })
   });
@@ -60,7 +60,7 @@ export const getRepoTree = async (token: string, owner: string, repo: string, br
      branchRes = await fetch(`${BASE_URL}/repos/${owner}/${repo}/branches/master`, {
         headers: { Authorization: `token ${token}` },
      });
-     if (!branchRes.ok) throw new Error('Could not find main or master branch');
+     if (!branchRes.ok) throw new Error('Could not find main or master branch. Repo might be empty.');
   }
 
   const branchData = await branchRes.json();

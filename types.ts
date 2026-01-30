@@ -25,3 +25,11 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
 }
+
+export interface RepoConfig {
+  owner: string;
+  name: string;
+  branch: string;
+  html_url: string;
+  private: boolean;
+}

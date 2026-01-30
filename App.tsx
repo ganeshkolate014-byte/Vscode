@@ -4,7 +4,7 @@ import { CodeEditor } from './components/CodeEditor';
 import { FileExplorer } from './components/FileExplorer';
 import { LivePreview } from './components/LivePreview';
 import { GitPanel } from './components/GitPanel';
-import { FileNode, ChatMessage } from './types';
+import { FileNode, ChatMessage, RepoConfig } from './types';
 import { 
   Files, 
   Search, 
@@ -69,6 +69,12 @@ export default function App() {
   const [debouncedFiles, setDebouncedFiles] = useState<FileNode[]>(files);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Git State Persisted
+  const [repoConfig, setRepoConfig] = useState<RepoConfig | null>(() => {
+      const saved = localStorage.getItem('droidcoder_repo');
+      return saved ? JSON.parse(saved) : null;
+  });
+
   // Viewport Height Management for Mobile Keyboard
   const [viewportHeight, setViewportHeight] = useState('100%');
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -111,6 +117,15 @@ export default function App() {
     const handler = setTimeout(() => setDebouncedFiles(files), 500);
     return () => clearTimeout(handler);
   }, [files]);
+
+  // Persist Repo Config
+  useEffect(() => {
+      if (repoConfig) {
+          localStorage.setItem('droidcoder_repo', JSON.stringify(repoConfig));
+      } else {
+          localStorage.removeItem('droidcoder_repo');
+      }
+  }, [repoConfig]);
 
   const getFileContent = (name: string) => {
       const findContent = (nodes: FileNode[]): string | undefined => {
@@ -391,6 +406,8 @@ export default function App() {
                  files={files}
                  onImport={handleGitImport}
                  onUpdateFileNode={handleUpdateFileNode}
+                 repoConfig={repoConfig}
+                 onSetRepoConfig={setRepoConfig}
                />
              )}
 
