@@ -31,6 +31,17 @@ const DEFAULT_SETTINGS: EditorSettings = {
     autoSave: true
 };
 
+const getIndentLevel = (line: string) => {
+    if (!line.trim()) return -1;
+    let spaces = 0;
+    for (const char of line) {
+        if (char === ' ') spaces++;
+        else if (char === '\t') spaces += 2;
+        else break;
+    }
+    return Math.floor(spaces / 2);
+};
+
 export const CodeEditor: React.FC<CodeEditorProps> = ({ 
     code, 
     language, 
@@ -55,7 +66,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
 
-  const lineHeight = Math.round(settings.fontSize * 1.5);
+  // Reduced line height multiplier from 1.5 to 1.25 for more compact view
+  const lineHeight = Math.round(settings.fontSize * 1.25);
 
   // Measure Character Size when font size changes
   const measureChar = () => {
@@ -93,6 +105,44 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '<br />';
       }
   }, [code, language]);
+
+  const indentGuidesPath = useMemo(() => {
+    if (!code || charSize.width === 0) return '';
+    
+    const lines = code.split('\n');
+    const tabWidth = 2 * charSize.width; // Assuming 2 spaces tab
+    const paths: string[] = [];
+    
+    const depths = lines.map(line => getIndentLevel(line));
+    const maxDepth = Math.max(...depths, 0) + 1;
+    
+    for (let level = 1; level < maxDepth; level++) {
+        let active = false;
+        let startLine = 0;
+        const x = (level - 1) * tabWidth;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const d = depths[i];
+            const isCovered = d >= level || (d === -1 && active);
+            
+            if (isCovered) {
+                if (!active) {
+                    active = true;
+                    startLine = i;
+                }
+            } else {
+                if (active) {
+                    active = false;
+                    paths.push(`M${x},${startLine * lineHeight} V${i * lineHeight}`);
+                }
+            }
+        }
+        if (active) {
+            paths.push(`M${x},${startLine * lineHeight} V${lines.length * lineHeight}`);
+        }
+    }
+    return paths.join(' ');
+  }, [code, charSize.width, lineHeight]);
 
   useLayoutEffect(() => {
     if (nextCursorPosRef.current !== null && textareaRef.current) {
@@ -403,6 +453,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 }}
             />
 
+            {/* Indentation Guides */}
+            <div 
+                className="absolute inset-0 pointer-events-none z-0" 
+                style={{ padding: settings.lineNumbers ? '20px 20px 20px 40px' : '20px' }}
+            >
+               <svg className="w-full h-full overflow-visible">
+                  <path d={indentGuidesPath} stroke="#3a3a3a" strokeWidth="1" fill="none" />
+               </svg>
+            </div>
+
             {/* Gutter */}
             {settings.lineNumbers && (
                 <div 
@@ -478,7 +538,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
            <MobileToolbar 
              onInsert={handleToolbarInsert}
              onTab={() => {
-                // ... same implementation ...
                 const e = { preventDefault: () => {} } as any;
                 if (textareaRef.current) {
                      const { selectionStart, selectionEnd, value } = textareaRef.current;
