@@ -19,7 +19,7 @@ export const validateToken = async (token: string) => {
 };
 
 export const getUserRepos = async (token: string) => {
-  // Sort by 'updated' in 'desc' order to show latest repos first
+  // Added direction=desc to ensure latest repos are at the top
   const res = await fetch(`${BASE_URL}/user/repos?sort=updated&direction=desc&per_page=50`, {
     headers: { Authorization: `token ${token}` },
   });

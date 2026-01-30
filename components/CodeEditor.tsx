@@ -21,11 +21,10 @@ interface CodeEditorProps {
   code: string;
   language: 'html' | 'css' | 'javascript';
   onChange: (newCode: string) => void;
-  onCursorMove?: (line: number, col: number) => void;
   readOnly?: boolean;
 }
 
-export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, onCursorMove, readOnly = false }) => {
+export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, readOnly = false }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [cursorXY, setCursorXY] = useState({ top: 0, left: 0 });
@@ -140,11 +139,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const lines = textUpToCursor.split('\n');
       const row = lines.length; 
       const col = lines[lines.length - 1].length;
-
-      // Notify parent about cursor stats
-      if (onCursorMove) {
-          onCursorMove(row, col + 1);
-      }
 
       const top = (row * 21) - 21 + 20; 
       const left = (col * charSize.width) + 20;
