@@ -4,13 +4,12 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-markup'; 
-// Ensure markup is available for HTML
 if (typeof window !== 'undefined' && Prism.languages.markup) {
     Prism.languages.html = Prism.languages.markup;
 }
 
 import { HTML_TAGS, CSS_PROPS, JS_KEYWORDS } from '../constants';
-import { Suggestion } from '../types';
+import { Suggestion, EditorSettings } from '../types';
 import { Bot } from 'lucide-react'; 
 import { completeCode } from '../services/geminiService';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
@@ -22,74 +21,79 @@ interface CodeEditorProps {
   language: 'html' | 'css' | 'javascript';
   onChange: (newCode: string) => void;
   readOnly?: boolean;
+  settings?: EditorSettings;
 }
 
-export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange, readOnly = false }) => {
+const DEFAULT_SETTINGS: EditorSettings = {
+    fontSize: 14,
+    wordWrap: false,
+    lineNumbers: true,
+    autoSave: true
+};
+
+export const CodeEditor: React.FC<CodeEditorProps> = ({ 
+    code, 
+    language, 
+    onChange, 
+    readOnly = false,
+    settings = DEFAULT_SETTINGS
+}) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [cursorXY, setCursorXY] = useState({ top: 0, left: 0 });
   const [suggestionPlacement, setSuggestionPlacement] = useState<'top' | 'bottom'>('bottom');
-  const [charSize, setCharSize] = useState({ width: 0, height: 21 });
+  const [charSize, setCharSize] = useState({ width: 0, height: 0 });
+  const [activeLineIndex, setActiveLineIndex] = useState(0);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
   const nextCursorPosRef = useRef<number | null>(null); 
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [autoSuggestTimer, setAutoSuggestTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const activeRequestRef = useRef<number>(0);
   
-  // History tracking
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
 
-  // 1. Measure Character Size accurately
+  const lineHeight = Math.round(settings.fontSize * 1.5);
+
+  // Measure Character Size when font size changes
   const measureChar = () => {
       const span = document.createElement('span');
       span.style.fontFamily = '"Fira Code", monospace';
-      span.style.fontSize = '14px';
-      span.style.lineHeight = '21px'; 
+      span.style.fontSize = `${settings.fontSize}px`;
+      span.style.lineHeight = `${lineHeight}px`; 
       span.style.visibility = 'hidden';
       span.style.position = 'absolute';
       span.textContent = 'M'; 
       document.body.appendChild(span);
       const rect = span.getBoundingClientRect();
-      setCharSize({ width: rect.width, height: 21 }); 
+      setCharSize({ width: rect.width, height: rect.height }); 
       document.body.removeChild(span);
   };
 
   useEffect(() => {
       measureChar();
-      if (document.fonts) {
-          document.fonts.ready.then(measureChar);
-      }
       window.addEventListener('resize', measureChar);
       return () => window.removeEventListener('resize', measureChar);
-  }, []);
+  }, [settings.fontSize]);
 
-  // SAFE SYNTAX HIGHLIGHTING
   const highlightedCode = useMemo(() => {
       try {
-          // Resolve Grammar
           let grammar = Prism.languages[language];
           if (!grammar) {
              if (language === 'html') grammar = Prism.languages.markup || Prism.languages.html;
              if (language === 'javascript') grammar = Prism.languages.javascript || Prism.languages.js;
              if (language === 'css') grammar = Prism.languages.css;
           }
-          
-          // Fallback
           if (!grammar) grammar = Prism.languages.markup;
-
           if (!code) return '<br />';
-          return Prism.highlight(code, grammar || Prism.languages.markup, language) + '<br />';
+          return Prism.highlight(code, grammar, language) + '<br />';
       } catch (e) {
-          // Fallback to simple escaping if Prism fails
           return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + '<br />';
       }
   }, [code, language]);
 
-  // Cursor Auto-Scroll & Focus
   useLayoutEffect(() => {
     if (nextCursorPosRef.current !== null && textareaRef.current) {
       const pos = nextCursorPosRef.current;
@@ -100,7 +104,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     }
   }, [code]);
 
-  // History
   useEffect(() => {
      if (code !== historyRef.current[historyPointer.current]) {
          const nextPtr = historyPointer.current + 1;
@@ -117,8 +120,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     const lines = textBefore.split('\n');
     const lineNo = lines.length;
     
-    const cursorTop = (lineNo - 1) * 21 + 20; // 20px padding
-    const cursorBottom = cursorTop + 21;
+    const cursorTop = (lineNo - 1) * lineHeight + 20; 
+    const cursorBottom = cursorTop + lineHeight;
     
     const container = containerRef.current;
     const { scrollTop, clientHeight } = container;
@@ -140,19 +143,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       const row = lines.length; 
       const col = lines[lines.length - 1].length;
 
-      const top = (row * 21) - 21 + 20; 
-      const left = (col * charSize.width) + 20;
+      setActiveLineIndex(row - 1);
+
+      const top = (row * lineHeight) - lineHeight + 20; 
+      const left = (col * charSize.width) + (settings.lineNumbers ? 40 : 20); // Adjust for gutter
       
       setCursorXY({ top, left });
 
       if (containerRef.current) {
          const container = containerRef.current;
          const cursorVisualTop = top - container.scrollTop;
-         if (cursorVisualTop > container.clientHeight / 2) {
-             setSuggestionPlacement('top');
-         } else {
-             setSuggestionPlacement('bottom');
-         }
+         setSuggestionPlacement(cursorVisualTop > container.clientHeight / 2 ? 'top' : 'bottom');
       }
   };
 
@@ -167,8 +168,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     const textBeforeCursor = val.slice(0, cursorPos);
     
     updateCursorPosition();
-    ensureCursorVisible();
-
+    
+    // Suggestion logic...
     let newSuggestions: Suggestion[] = [];
     const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
     const currentWord = words[words.length - 1];
@@ -179,28 +180,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
             if (potentialAbbr && potentialAbbr.length > 0) {
                 const emmetResult = expandAbbreviation(potentialAbbr);
                 if (emmetResult) {
-                     newSuggestions.push({
-                        label: potentialAbbr,
-                        value: emmetResult,
-                        type: 'emmet',
-                        detail: 'Emmet Abbreviation'
-                     });
+                     newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet' });
                 }
             }
         }
-
         let source: Suggestion[] = [];
         if (language === 'html') source = HTML_TAGS;
         if (language === 'css') source = CSS_PROPS;
         if (language === 'javascript') source = JS_KEYWORDS;
-
         const matches = source.filter(s => s.label.toLowerCase().startsWith(currentWord.toLowerCase()));
-        
-        matches.forEach(m => {
-            if (!newSuggestions.find(s => s.label === m.label)) {
-                newSuggestions.push(m);
-            }
-        });
+        matches.forEach(m => { if (!newSuggestions.find(s => s.label === m.label)) newSuggestions.push(m); });
     }
 
     if (newSuggestions.length > 0) {
@@ -221,18 +210,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
       setIsAiLoading(true);
       const textBefore = currentVal.slice(0, cursor);
-      
       try {
         const completion = await completeCode(textBefore, language);
         if (requestId !== activeRequestRef.current) return;
-
         if (completion && completion.trim().length > 0) {
-            setSuggestions([{
-                label: "AI Suggestion",
-                value: completion,
-                type: 'snippet',
-                detail: 'Gemini Auto-complete'
-            }]);
+            setSuggestions([{ label: "AI Suggestion", value: completion, type: 'snippet', detail: 'Gemini' }]);
             updateCursorPosition();
         }
       } catch (e) { } 
@@ -251,19 +233,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     
     let charsToDelete = 0;
     if (suggestion.type === 'emmet') {
-         const abbr = extractAbbreviation(textBeforeCursor);
-         charsToDelete = abbr.length;
+         charsToDelete = extractAbbreviation(textBeforeCursor).length;
     } else if (suggestion.label === 'AI Suggestion') {
          charsToDelete = 0;
     } else {
         const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
-        const currentWord = words[words.length - 1];
-        charsToDelete = currentWord.length;
+        charsToDelete = words[words.length - 1].length;
     }
     
     before = val.substring(0, cursorPos - charsToDelete);
     after = val.substring(cursorPos);
-
     if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
@@ -294,7 +273,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Format Shortcut: Shift + Alt + F
     if (e.shiftKey && e.altKey && e.code === 'KeyF') {
         e.preventDefault();
         handleFormat();
@@ -333,11 +311,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
     } 
     else if (e.key === 'Enter') {
       e.preventDefault();
-      
       const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
       const textBeforeCursor = value.substring(0, selectionStart);
       const currentLine = textBeforeCursor.substring(lineStart);
-      
       const match = currentLine.match(/^\s*/);
       const currentIndent = match ? match[0] : '';
       
@@ -347,34 +323,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       let insertion = '\n' + currentIndent;
       let extraOffset = 0;
 
-      // Smart Indentation for brackets/braces
-      if (
-        (charBefore === '{' && charAfter === '}') ||
-        (charBefore === '(' && charAfter === ')') ||
-        (charBefore === '[' && charAfter === ']')
-      ) {
+      if ((charBefore === '{' && charAfter === '}') || (charBefore === '(' && charAfter === ')') || (charBefore === '[' && charAfter === ']')) {
          insertion += '  \n' + currentIndent;
-         extraOffset = currentIndent.length + 3; // Position inside the new indent
-      } else if (
-          ['{', '(', '[', ':'].includes(charBefore) || 
-          (language === 'html' && textBeforeCursor.trim().endsWith('>'))
-      ) {
+         extraOffset = currentIndent.length + 3;
+      } else if (['{', '(', '[', ':'].includes(charBefore) || (language === 'html' && textBeforeCursor.trim().endsWith('>'))) {
          insertion += '  ';
          extraOffset = currentIndent.length + 3;
       } else {
          extraOffset = insertion.length;
       }
       
-      // Special case for split brackets where we just want the cursor in the middle
-      if ((charBefore === '{' && charAfter === '}') || (charBefore === '(' && charAfter === ')')) {
-           const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
-           onChange(newValue);
-           nextCursorPosRef.current = selectionStart + currentIndent.length + 3;
-      } else {
-           const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
-           onChange(newValue);
-           nextCursorPosRef.current = selectionStart + extraOffset;
-      }
+      const newValue = value.substring(0, selectionStart) + insertion + value.substring(selectionEnd);
+      onChange(newValue);
+      nextCursorPosRef.current = selectionStart + extraOffset;
     }
   };
 
@@ -409,14 +370,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
 
   const commonStyle: React.CSSProperties = {
     fontFamily: '"Fira Code", monospace',
-    fontSize: '14px',
-    lineHeight: '21px', 
-    padding: '20px',
+    fontSize: `${settings.fontSize}px`,
+    lineHeight: `${lineHeight}px`,
+    padding: settings.lineNumbers ? '20px 20px 20px 40px' : '20px',
     margin: 0,
     border: 0,
-    whiteSpace: 'pre',
-    wordWrap: 'normal',
-    overflowWrap: 'normal',
+    whiteSpace: settings.wordWrap ? 'pre-wrap' : 'pre',
+    wordWrap: settings.wordWrap ? 'break-word' : 'normal',
+    overflowWrap: 'anywhere',
     tabSize: 2,
     boxSizing: 'border-box'
   };
@@ -431,27 +392,34 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
       >
         <div 
             className="relative min-h-full" 
-            style={{ width: 'fit-content', minWidth: '100%' }}
+            style={{ width: settings.wordWrap ? '100%' : 'fit-content', minWidth: '100%' }}
         >
-            {/* Gutter */}
-            <div className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-sm pt-5 pr-2 text-right select-none z-10 hidden sm:block">
-            {code.split('\n').map((_, i) => <div key={i} style={{height: '21px'}}>{i+1}</div>)}
-            </div>
+            {/* Active Line Highlight */}
+            <div 
+                className="absolute left-0 w-full bg-[#2f3333] border-l-2 border-[#454545] pointer-events-none z-0"
+                style={{
+                    top: activeLineIndex * lineHeight + 20,
+                    height: lineHeight
+                }}
+            />
 
-            {/* PRE: Handles visual sizing and highlighting via dangerouslySetInnerHTML */}
+            {/* Gutter */}
+            {settings.lineNumbers && (
+                <div 
+                    className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-xs pt-5 pr-2 text-right select-none z-10 hidden sm:block"
+                    style={{ lineHeight: `${lineHeight}px` }}
+                >
+                    {code.split('\n').map((_, i) => <div key={i} className={i === activeLineIndex ? 'text-gray-200 font-bold' : ''}>{i+1}</div>)}
+                </div>
+            )}
+
             <pre
-                ref={preRef}
                 aria-hidden="true"
                 className={`pointer-events-none language-${language} m-0 border-0 relative z-10`}
-                style={{ 
-                    ...commonStyle, 
-                    minHeight: '100%',
-                    paddingBottom: '250px', 
-                }}
+                style={{ ...commonStyle, minHeight: '100%', paddingBottom: '250px' }}
                 dangerouslySetInnerHTML={{ __html: highlightedCode }}
             />
 
-            {/* TEXTAREA: Handles input and cursor */}
             <textarea
                 ref={textareaRef}
                 value={code}
@@ -468,12 +436,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
                     ...commonStyle,
                     color: 'transparent',
                     paddingBottom: '250px',
-                    backgroundColor: 'transparent' // Explicitly transparent
+                    backgroundColor: 'transparent'
                 }}
                 disabled={readOnly}
             />
 
-            {/* Suggestions */}
             {(suggestions.length > 0) && (
                 <div 
                     className="absolute z-50 bg-[#252526] border border-[#454545] shadow-2xl rounded-sm flex flex-col min-w-[200px] max-w-[300px] max-h-48 overflow-y-auto"
@@ -481,7 +448,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
                         left: cursorXY.left,
                         ...(suggestionPlacement === 'top' 
                             ? { bottom: `calc(100% - ${cursorXY.top}px + 5px)` }
-                            : { top: cursorXY.top + 21 + 5 } 
+                            : { top: cursorXY.top + lineHeight + 5 } 
                         )
                     }}
                 >
@@ -511,6 +478,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ code, language, onChange
            <MobileToolbar 
              onInsert={handleToolbarInsert}
              onTab={() => {
+                // ... same implementation ...
                 const e = { preventDefault: () => {} } as any;
                 if (textareaRef.current) {
                      const { selectionStart, selectionEnd, value } = textareaRef.current;

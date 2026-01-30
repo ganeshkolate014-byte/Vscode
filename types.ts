@@ -1,4 +1,3 @@
-
 export interface FileNode {
   id: string;
   name: string;
@@ -32,4 +31,18 @@ export interface RepoConfig {
   branch: string;
   html_url: string;
   private: boolean;
+}
+
+export interface EditorSettings {
+  fontSize: number;
+  wordWrap: boolean;
+  lineNumbers: boolean;
+  autoSave: boolean;
+}
+
+export interface Command {
+  id: string;
+  label: string;
+  action: () => void;
+  shortcut?: string;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "DroidCoder AI",
-  "description": "A mobile-first, AI-powered web development IDE with live preview, syntax highlighting, and intelligent code suggestions.",
+  "name": "DroidCoder",
+  "description": "A mobile-first code editor and IDE with Gemini AI assistance, GitHub integration, and live preview.",
   "requestFramePermissions": []
 }

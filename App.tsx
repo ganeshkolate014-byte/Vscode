@@ -4,7 +4,8 @@ import { CodeEditor } from './components/CodeEditor';
 import { FileExplorer } from './components/FileExplorer';
 import { LivePreview } from './components/LivePreview';
 import { GitPanel } from './components/GitPanel';
-import { FileNode, ChatMessage, RepoConfig } from './types';
+import { SettingsModal } from './components/SettingsModal';
+import { FileNode, ChatMessage, RepoConfig, EditorSettings } from './types';
 import { 
   Files, 
   Search, 
@@ -19,8 +20,8 @@ import {
   Columns
 } from 'lucide-react';
 import { generateCodeHelp } from './services/geminiService';
+import { formatCode } from './services/formattingService';
 
-// Initial File System
 const initialFiles: FileNode[] = [
   {
     id: '1',
@@ -45,7 +46,6 @@ const initialFiles: FileNode[] = [
   }
 ];
 
-// Helper to determine language
 const getLanguage = (filename: string): 'html' | 'css' | 'javascript' => {
     if (filename.endsWith('.css')) return 'css';
     if (filename.endsWith('.js') || filename.endsWith('.ts')) return 'javascript';
@@ -53,7 +53,6 @@ const getLanguage = (filename: string): 'html' | 'css' | 'javascript' => {
 };
 
 export default function App() {
-  // Load files from local storage if available
   const [files, setFiles] = useState<FileNode[]>(() => {
     const saved = localStorage.getItem('droidcoder_files');
     return saved ? JSON.parse(saved) : initialFiles;
@@ -69,13 +68,18 @@ export default function App() {
   const [debouncedFiles, setDebouncedFiles] = useState<FileNode[]>(files);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Git State Persisted
   const [repoConfig, setRepoConfig] = useState<RepoConfig | null>(() => {
       const saved = localStorage.getItem('droidcoder_repo');
       return saved ? JSON.parse(saved) : null;
   });
 
-  // Viewport Height Management for Mobile Keyboard
+  // Settings
+  const [settings, setSettings] = useState<EditorSettings>(() => {
+      const saved = localStorage.getItem('droidcoder_settings');
+      return saved ? JSON.parse(saved) : { fontSize: 14, wordWrap: false, lineNumbers: true, autoSave: true };
+  });
+  const [showSettings, setShowSettings] = useState(false);
+
   const [viewportHeight, setViewportHeight] = useState('100%');
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
@@ -84,7 +88,6 @@ export default function App() {
     const handleResize = () => {
        if (timeoutId) clearTimeout(timeoutId);
        timeoutId = setTimeout(() => {
-            // Use visualViewport if available for precise keyboard handling
             if (window.visualViewport) {
                 setViewportHeight(`${window.visualViewport.height}px`);
                 setIsKeyboardOpen(window.visualViewport.height < window.screen.height * 0.75);
@@ -94,13 +97,9 @@ export default function App() {
        }, 100);
     };
 
-    // Initial set
     handleResize();
-
-    // Listeners
     window.visualViewport?.addEventListener('resize', handleResize);
     window.addEventListener('resize', handleResize);
-
     return () => {
       window.visualViewport?.removeEventListener('resize', handleResize);
       window.removeEventListener('resize', handleResize);
@@ -108,24 +107,25 @@ export default function App() {
     };
   }, []);
 
-  // Save logic
   useEffect(() => {
-    const hasHandles = files.some(f => f.handle);
-    if (!hasHandles) {
-        localStorage.setItem('droidcoder_files', JSON.stringify(files));
+    if (settings.autoSave) {
+        const hasHandles = files.some(f => f.handle);
+        if (!hasHandles) {
+            localStorage.setItem('droidcoder_files', JSON.stringify(files));
+        }
     }
     const handler = setTimeout(() => setDebouncedFiles(files), 500);
     return () => clearTimeout(handler);
-  }, [files]);
+  }, [files, settings.autoSave]);
 
-  // Persist Repo Config
   useEffect(() => {
-      if (repoConfig) {
-          localStorage.setItem('droidcoder_repo', JSON.stringify(repoConfig));
-      } else {
-          localStorage.removeItem('droidcoder_repo');
-      }
+      if (repoConfig) localStorage.setItem('droidcoder_repo', JSON.stringify(repoConfig));
+      else localStorage.removeItem('droidcoder_repo');
   }, [repoConfig]);
+
+  useEffect(() => {
+      localStorage.setItem('droidcoder_settings', JSON.stringify(settings));
+  }, [settings]);
 
   const getFileContent = (name: string) => {
       const findContent = (nodes: FileNode[]): string | undefined => {
@@ -169,10 +169,7 @@ export default function App() {
             setOpenFiles([indexNode.id]);
             setActiveFileId(indexNode.id);
         }
-    } catch (err) {
-      console.error("Error opening folder:", err);
-      // alert("Could not open folder.");
-    }
+    } catch (err) { console.error("Error opening folder:", err); }
   };
 
   const readDirectory = async (dirHandle: any, parentId: string | null): Promise<FileNode[]> => {
@@ -185,20 +182,13 @@ export default function App() {
               if (file.size < 100000 && !file.type.startsWith('image')) {
                  try { content = await file.text(); } catch (e) {}
               }
-              nodes.push({
-                  id, name: entry.name, type: 'file', language: getLanguage(entry.name), content, handle: entry
-              });
+              nodes.push({ id, name: entry.name, type: 'file', language: getLanguage(entry.name), content, handle: entry });
           } else if (entry.kind === 'directory') {
               const children = await readDirectory(entry, id);
-              nodes.push({
-                  id, name: entry.name, type: 'folder', children, isOpen: false, handle: entry
-              });
+              nodes.push({ id, name: entry.name, type: 'folder', children, isOpen: false, handle: entry });
           }
       }
-      return nodes.sort((a, b) => {
-          if (a.type === b.type) return a.name.localeCompare(b.name);
-          return a.type === 'folder' ? -1 : 1;
-      });
+      return nodes.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'folder' ? -1 : 1));
   };
 
   const handleCodeChange = (newCode: string) => {
@@ -226,13 +216,11 @@ export default function App() {
 
   const toggleFolder = (folderId: string) => {
     setFiles(prev => {
-         const toggle = (nodes: FileNode[]): FileNode[] => {
-             return nodes.map(node => {
-                 if (node.id === folderId) return { ...node, isOpen: !node.isOpen };
-                 if (node.children) return { ...node, children: toggle(node.children) };
-                 return node;
-             });
-         };
+         const toggle = (nodes: FileNode[]): FileNode[] => nodes.map(node => {
+             if (node.id === folderId) return { ...node, isOpen: !node.isOpen };
+             if (node.children) return { ...node, children: toggle(node.children) };
+             return node;
+         });
          return toggle(prev);
     });
   };
@@ -247,23 +235,18 @@ export default function App() {
     e.stopPropagation();
     const newOpenFiles = openFiles.filter(fid => fid !== id);
     setOpenFiles(newOpenFiles);
-    if (activeFileId === id && newOpenFiles.length > 0) setActiveFileId(newOpenFiles[newOpenFiles.length - 1]);
-    else if (newOpenFiles.length === 0) setActiveFileId('');
+    if (activeFileId === id) setActiveFileId(newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1] : '');
   };
 
   const createFile = (parentId: string | null, type: 'file' | 'folder', name: string) => {
-      const newFile: FileNode = {
-        id: Date.now().toString(), name, type, content: type === 'file' ? '' : undefined, language: getLanguage(name), isOpen: true, children: []
-      };
+      const newFile: FileNode = { id: Date.now().toString(), name, type, content: type === 'file' ? '' : undefined, language: getLanguage(name), isOpen: true, children: [] };
       setFiles(prev => {
           if (!parentId) return [...prev, newFile];
-          const addToParent = (nodes: FileNode[]): FileNode[] => {
-              return nodes.map(node => {
-                  if (node.id === parentId && node.children) return { ...node, children: [...node.children, newFile], isOpen: true };
-                  if (node.children) return { ...node, children: addToParent(node.children) };
-                  return node;
-              });
-          };
+          const addToParent = (nodes: FileNode[]): FileNode[] => nodes.map(node => {
+              if (node.id === parentId && node.children) return { ...node, children: [...node.children, newFile], isOpen: true };
+              if (node.children) return { ...node, children: addToParent(node.children) };
+              return node;
+          });
           return addToParent(prev);
       });
       if (type === 'file') handleFileSelect(newFile);
@@ -271,12 +254,10 @@ export default function App() {
 
   const deleteNode = (id: string) => {
     setFiles(prev => {
-        const remove = (nodes: FileNode[]): FileNode[] => {
-            return nodes.filter(n => n.id !== id).map(n => {
-                if (n.children) return { ...n, children: remove(n.children) };
-                return n;
-            });
-        };
+        const remove = (nodes: FileNode[]): FileNode[] => nodes.filter(n => n.id !== id).map(n => {
+            if (n.children) return { ...n, children: remove(n.children) };
+            return n;
+        });
         return remove(prev);
     });
     if (openFiles.includes(id)) {
@@ -288,19 +269,11 @@ export default function App() {
   
   const renameNode = (id: string, newName: string) => {
     setFiles(prev => {
-        const update = (nodes: FileNode[]): FileNode[] => {
-            return nodes.map(node => {
-                if (node.id === id) {
-                     return { 
-                       ...node, 
-                       name: newName, 
-                       language: getLanguage(newName) 
-                     };
-                }
-                if (node.children) return { ...node, children: update(node.children) };
-                return node;
-            });
-        };
+        const update = (nodes: FileNode[]): FileNode[] => nodes.map(node => {
+            if (node.id === id) return { ...node, name: newName, language: getLanguage(newName) };
+            if (node.children) return { ...node, children: update(node.children) };
+            return node;
+        });
         return update(prev);
     });
   };
@@ -317,11 +290,7 @@ export default function App() {
     setIsChatLoading(false);
   };
 
-  const togglePreviewMode = () => {
-      if (previewMode === 'hidden') setPreviewMode('split');
-      else if (previewMode === 'split') setPreviewMode('full');
-      else setPreviewMode('hidden');
-  };
+  const togglePreviewMode = () => setPreviewMode(m => m === 'hidden' ? 'split' : m === 'split' ? 'full' : 'hidden');
   
   const findActiveNode = (nodes: FileNode[], id: string): FileNode | undefined => {
       for (const node of nodes) {
@@ -336,41 +305,33 @@ export default function App() {
   
   const currentActiveNode = useMemo(() => findActiveNode(files, activeFileId), [files, activeFileId]);
 
-  // --- GitHub Integrations ---
   const handleGitImport = (nodes: FileNode[], repoName: string) => {
       setFiles(nodes);
       setOpenFiles([]);
       setActiveFileId('');
-      // Try to open index.html or README
-      const readme = nodes.find(n => n.name.toLowerCase().startsWith('readme'));
-      const index = nodes.find(n => n.name === 'index.html');
-      const firstFile = index || readme || nodes.find(n => n.type === 'file');
-      
+      const firstFile = nodes.find(n => n.name === 'index.html') || nodes.find(n => n.type === 'file');
       if (firstFile) {
           setOpenFiles([firstFile.id]);
           setActiveFileId(firstFile.id);
       }
-      
-      // Auto-switch to files view on mobile after import
       setActiveSideBar('explorer');
   };
 
   const handleUpdateFileNode = (id: string, sha: string) => {
       setFiles(prev => {
-          const update = (nodes: FileNode[]): FileNode[] => {
-              return nodes.map(n => {
-                  if (n.id === id) return { ...n, sha };
-                  if (n.children) return { ...n, children: update(n.children) };
-                  return n;
-              });
-          };
+          const update = (nodes: FileNode[]): FileNode[] => nodes.map(n => {
+              if (n.id === id) return { ...n, sha };
+              if (n.children) return { ...n, children: update(n.children) };
+              return n;
+          });
           return update(prev);
       });
   };
 
   return (
     <div className="flex flex-col bg-vscode-bg text-vscode-fg font-sans w-full" style={{ height: viewportHeight, overflow: 'hidden' }}>
-      
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} settings={settings} onUpdate={setSettings} />
+
       {/* 1. Main Workspace Area */}
       <div className="flex-1 flex overflow-hidden relative">
         
@@ -381,12 +342,12 @@ export default function App() {
             <ActivityIcon icon={<GitGraph size={24} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
             <ActivityIcon icon={<MessageSquare size={24} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
             <div className="flex-1" />
-            <ActivityIcon icon={<Settings size={24} />} active={false} onClick={() => {}} />
+            <ActivityIcon icon={<Settings size={24} />} active={false} onClick={() => setShowSettings(true)} />
         </aside>
 
         {/* B. Side Bar */}
         {activeSideBar && (
-          <div className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all ${activeSideBar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${activeSideBar === 'ai' ? 'w-full md:w-80' : 'w-64'}`}>
+          <div className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all duration-300 ease-out ${activeSideBar ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 md:opacity-100 md:translate-x-0'} ${activeSideBar === 'ai' ? 'w-full md:w-80' : 'w-64'} animate-slide-in-left shadow-2xl md:shadow-none`}>
              
              {activeSideBar === 'explorer' && (
                <FileExplorer 
@@ -412,14 +373,14 @@ export default function App() {
              )}
 
              {activeSideBar === 'ai' && (
-                <div className="flex flex-col h-full bg-vscode-sidebar">
+                <div className="flex flex-col h-full bg-vscode-sidebar animate-fade-in">
                     <div className="p-3 uppercase text-xs font-bold text-gray-400 border-b border-vscode-activity flex justify-between">
                         <span>AI Assistant</span>
                         <button onClick={() => setActiveSideBar(null)} className="md:hidden"><X size={16}/></button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
                         {chatMessages.map((msg, idx) => (
-                            <div key={idx} className={`p-2 rounded text-sm ${msg.role === 'user' ? 'bg-vscode-accent text-white self-end ml-4' : 'bg-vscode-input text-gray-200 mr-4'}`}>
+                            <div key={idx} className={`p-2 rounded text-sm animate-fade-in ${msg.role === 'user' ? 'bg-vscode-accent text-white self-end ml-4' : 'bg-vscode-input text-gray-200 mr-4'}`}>
                                 {msg.text}
                             </div>
                         ))}
@@ -433,7 +394,7 @@ export default function App() {
                             onChange={(e) => setChatInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
                         />
-                        <button onClick={sendChatMessage} className="p-2 bg-vscode-accent rounded text-white"><Send size={16}/></button>
+                        <button onClick={sendChatMessage} className="p-2 bg-vscode-accent rounded text-white hover:opacity-90 active:scale-95 transition-transform"><Send size={16}/></button>
                     </div>
                 </div>
              )}
@@ -442,7 +403,7 @@ export default function App() {
         )}
 
         {/* C. Editor & Preview Group */}
-        <div className="flex-1 flex flex-col min-w-0 bg-vscode-bg relative">
+        <div className="flex-1 flex flex-col min-w-0 bg-vscode-bg relative transition-all duration-300">
           
           {/* C1. Tabs Header */}
           <div className="flex bg-vscode-sidebar overflow-x-auto no-scrollbar h-9 shrink-0 border-b border-black">
@@ -454,12 +415,12 @@ export default function App() {
                      <div 
                         key={fid}
                         onClick={() => setActiveFileId(fid)}
-                        className={`flex items-center px-3 min-w-[100px] max-w-[150px] border-r border-vscode-border cursor-pointer select-none group ${isActive ? 'bg-vscode-tabActive text-white border-t-2 border-t-vscode-accent' : 'bg-vscode-tabInactive text-gray-400 hover:bg-vscode-bg'}`}
+                        className={`flex items-center px-3 min-w-[100px] max-w-[150px] border-r border-vscode-border cursor-pointer select-none group transition-colors duration-200 ${isActive ? 'bg-vscode-tabActive text-white border-t-2 border-t-vscode-accent' : 'bg-vscode-tabInactive text-gray-400 hover:bg-vscode-bg'}`}
                      >
                         <span className="truncate text-xs flex-1 mr-2">{node.name}</span>
                         <button 
                             onClick={(e) => closeTab(e, fid)} 
-                            className={`opacity-0 group-hover:opacity-100 p-0.5 rounded-sm hover:bg-gray-600 ${isActive ? 'opacity-100' : ''}`}
+                            className={`opacity-0 group-hover:opacity-100 p-0.5 rounded-sm hover:bg-gray-600 transition-opacity ${isActive ? 'opacity-100' : ''}`}
                         >
                             <X size={12} />
                         </button>
@@ -471,7 +432,7 @@ export default function App() {
              <div className="flex-1 bg-vscode-sidebar border-b border-black flex items-center justify-end px-2 gap-2">
                  <button 
                     onClick={togglePreviewMode} 
-                    className={`p-1 rounded hover:bg-gray-700 ${previewMode !== 'hidden' ? 'text-vscode-accent' : 'text-gray-400'}`}
+                    className={`p-1 rounded hover:bg-gray-700 transition-colors ${previewMode !== 'hidden' ? 'text-vscode-accent' : 'text-gray-400'}`}
                     title="Toggle Preview Mode"
                  >
                     {previewMode === 'split' ? <Columns size={16} /> : previewMode === 'full' ? <Maximize2 size={16} /> : <Play size={16} />}
@@ -483,15 +444,16 @@ export default function App() {
           <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
              
              {/* EDITOR PANE */}
-             <div className={`${previewMode === 'full' ? 'hidden' : 'flex-1'} relative h-full border-r border-black`}>
+             <div className={`${previewMode === 'full' ? 'hidden' : 'flex-1'} relative h-full border-r border-black transition-all duration-300`}>
                 {currentActiveNode ? (
                     <CodeEditor 
                         code={currentActiveNode.content || ''} 
                         language={currentActiveNode.language || 'html'} 
                         onChange={handleCodeChange}
+                        settings={settings}
                     />
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4">
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4 animate-fade-in">
                         <Code2 size={48} className="opacity-20" />
                         <p className="text-sm">Select a file or Open Folder</p>
                     </div>
@@ -500,10 +462,10 @@ export default function App() {
 
              {/* PREVIEW PANE */}
              {(previewMode !== 'hidden') && (
-                <div className={`${previewMode === 'split' ? 'h-1/2 md:h-full md:w-1/2' : 'absolute inset-0 z-40'} bg-white flex flex-col border-t md:border-t-0 md:border-l border-black`}>
+                <div className={`${previewMode === 'split' ? 'h-1/2 md:h-full md:w-1/2' : 'absolute inset-0 z-40'} bg-white flex flex-col border-t md:border-t-0 md:border-l border-black animate-slide-in-right shadow-xl`}>
                    <div className="h-6 bg-gray-100 border-b flex items-center px-4 text-[10px] text-gray-600 justify-between shrink-0">
                       <span>Live Preview</span>
-                      <button onClick={() => setPreviewMode('hidden')}><X size={12}/></button>
+                      <button onClick={() => setPreviewMode('hidden')} className="hover:text-red-500 transition-colors"><X size={12}/></button>
                    </div>
                    <div className="flex-1 relative">
                         <LivePreview 
@@ -518,30 +480,33 @@ export default function App() {
         </div>
       </div>
 
-      {/* 2. Activity Bar (Mobile Bottom) - Hide when Keyboard Open to give space */}
+      {/* 2. Activity Bar (Mobile Bottom) */}
       {!isKeyboardOpen && (
         <div className="md:hidden h-12 bg-vscode-activity flex justify-around items-center border-t border-black shrink-0 z-40">
            <ActivityIcon icon={<Files size={20} />} active={activeSideBar === 'explorer'} onClick={() => setActiveSideBar(activeSideBar === 'explorer' ? null : 'explorer')} />
            <ActivityIcon icon={<Search size={20} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
            
            <div 
-            className="w-12 h-12 -mt-6 bg-vscode-accent rounded-full flex items-center justify-center shadow-lg border-4 border-vscode-bg cursor-pointer" 
+            className="w-12 h-12 -mt-6 bg-vscode-accent rounded-full flex items-center justify-center shadow-lg border-4 border-vscode-bg cursor-pointer hover:scale-105 transition-transform" 
             onClick={togglePreviewMode}
            >
                {previewMode === 'hidden' ? <Play size={24} className="text-white ml-1" /> : <Code2 size={24} className="text-white" />}
            </div>
            
            <ActivityIcon icon={<GitGraph size={20} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
-           <ActivityIcon icon={<MessageSquare size={20} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
+           <ActivityIcon icon={<Settings size={20} />} active={false} onClick={() => setShowSettings(true)} />
         </div>
       )}
 
-      {/* 3. Status Bar - Hide when Keyboard Open */}
+      {/* 3. Status Bar */}
       {!isKeyboardOpen && (
         <div className="h-6 bg-vscode-accent text-white flex items-center px-3 text-[11px] justify-between select-none shrink-0 z-50">
           <div className="flex gap-4">
-              <span className="flex items-center gap-1"><Code2 size={10}/> {currentActiveNode ? 'Local File' : 'Main'}</span>
-              <span>Preview: {previewMode}</span>
+              <span className="flex items-center gap-1">
+                  <Code2 size={10}/> 
+                  {repoConfig ? repoConfig.name : 'Local Workspace'}
+                  {currentActiveNode ? ` • ${currentActiveNode.name}` : ''}
+              </span>
           </div>
           <div className="flex gap-4">
                <span>Ln {currentActiveNode ? (currentActiveNode.content?.split('\n').length || 1) : 0}</span>
@@ -556,9 +521,9 @@ export default function App() {
 const ActivityIcon = ({ icon, active, onClick }: { icon: React.ReactNode, active: boolean, onClick: () => void }) => (
     <button 
         onClick={onClick}
-        className={`p-2 relative group ${active ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+        className={`p-2 relative group transition-colors duration-200 ${active ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
     >
-        {active && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-vscode-accent md:block hidden" />}
+        {active && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-vscode-accent md:block hidden animate-fade-in" />}
         {icon}
     </button>
 );

@@ -67,9 +67,17 @@ const FileItem: React.FC<{
   };
 
   return (
-    <div>
+    <div className="relative">
+       {/* Indent Guide */}
+      {depth > 0 && (
+          <div 
+            className="absolute top-0 bottom-0 w-px bg-vscode-border/50" 
+            style={{ left: `${depth * 12}px` }} 
+          />
+      )}
+
       <div
-        className={`flex items-center py-0.5 px-2 cursor-pointer select-none border-l-2 group ${
+        className={`flex items-center py-0.5 px-2 cursor-pointer select-none border-l-2 group relative z-10 transition-colors duration-150 ${
           isActive 
             ? 'bg-vscode-hover border-vscode-accent text-white' 
             : 'border-transparent hover:bg-vscode-hover text-vscode-fg'
@@ -77,7 +85,7 @@ const FileItem: React.FC<{
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={() => node.type === 'folder' ? onToggle(node.id) : onSelect(node)}
       >
-        <span className="mr-1.5 opacity-80">
+        <span className="mr-1.5 opacity-80 transition-transform duration-200">
           {node.type === 'folder' ? (
              node.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
           ) : (
@@ -116,14 +124,14 @@ const FileItem: React.FC<{
             <div className={`flex gap-1 ${isActive ? 'flex' : 'hidden group-hover:flex'}`}>
                 <button 
                     onClick={startRename}
-                    className="hover:text-vscode-accent p-1 text-gray-400"
+                    className="hover:text-vscode-accent p-1 text-gray-400 transition-colors"
                     title="Rename"
                 >
                     <Edit2 size={12} />
                 </button>
                 <button 
                     onClick={(e) => { e.stopPropagation(); if(confirm('Delete ' + node.name + '?')) onDelete(node.id); }}
-                    className="hover:text-red-400 p-1 text-gray-400"
+                    className="hover:text-red-400 p-1 text-gray-400 transition-colors"
                     title="Delete"
                 >
                     <Trash2 size={12} />
@@ -133,7 +141,7 @@ const FileItem: React.FC<{
       </div>
       
       {node.type === 'folder' && node.isOpen && node.children && (
-        <div>
+        <div className="animate-fade-in origin-top">
           {node.children.map(child => (
             <FileItem 
                 key={child.id} 
@@ -172,7 +180,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
       <div className="h-9 px-4 text-[11px] font-bold uppercase tracking-wider flex justify-between items-center text-gray-400">
         <span>Explorer</span>
         <div className="flex gap-2">
-           <MoreHorizontal size={14} className="cursor-pointer hover:text-white" />
+           <MoreHorizontal size={14} className="cursor-pointer hover:text-white transition-colors" />
         </div>
       </div>
       
@@ -183,14 +191,14 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
               <span>PROJECT</span>
           </div>
           <div className="flex gap-1.5 opacity-100 group-hover:opacity-100 transition-opacity">
-              <button onClick={onOpenFolder} className="hover:text-vscode-accent text-gray-300" title="Open Folder"><FolderInput size={14} /></button>
-              <button onClick={() => setIsCreating('file')} className="hover:text-white" title="New File"><FilePlus size={14}/></button>
-              <button onClick={() => setIsCreating('folder')} className="hover:text-white" title="New Folder"><FolderPlus size={14}/></button>
+              <button onClick={onOpenFolder} className="hover:text-vscode-accent text-gray-300 transition-colors" title="Open Folder"><FolderInput size={14} /></button>
+              <button onClick={() => setIsCreating('file')} className="hover:text-white transition-colors" title="New File"><FilePlus size={14}/></button>
+              <button onClick={() => setIsCreating('folder')} className="hover:text-white transition-colors" title="New Folder"><FolderPlus size={14}/></button>
           </div>
       </div>
 
       {isCreating && (
-          <div className="p-1 pl-4 flex gap-1 bg-vscode-input">
+          <div className="p-1 pl-4 flex gap-1 bg-vscode-input animate-fade-in">
               <input 
                 autoFocus
                 className="bg-vscode-bg text-white text-xs p-1 w-full outline-none border border-vscode-accent"
@@ -203,7 +211,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
           </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pt-1">
+      <div className="flex-1 overflow-y-auto pt-1 relative">
         {nodes.map(node => (
           <FileItem 
             key={node.id} 
@@ -221,7 +229,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
       </div>
       
       <div className="p-2 border-t border-vscode-activity text-[10px] text-gray-500 text-center">
-          Tap file to select. Icons appear on active item.
+          Double-click to rename
       </div>
     </div>
   );

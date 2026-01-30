@@ -286,7 +286,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
 
   if (view === 'login') {
     return (
-      <div className="h-full flex flex-col p-4 gap-4 bg-vscode-sidebar text-vscode-fg">
+      <div className="h-full flex flex-col p-4 gap-4 bg-vscode-sidebar text-vscode-fg animate-fade-in">
         <div className="flex items-center gap-2 text-lg font-bold">
            <Github size={24} />
            <span>GitHub Login</span>
@@ -304,29 +304,29 @@ export const GitPanel: React.FC<GitPanelProps> = ({
         <button 
            onClick={() => handleLogin(token)}
            disabled={loading || !token}
-           className="bg-vscode-accent text-white p-2 rounded flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
+           className="bg-vscode-accent text-white p-2 rounded flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all active:scale-95"
         >
             {loading ? <Loader2 className="animate-spin" size={16}/> : <LogIn size={16} />}
             Connect
         </button>
-        {status && <p className="text-red-400 text-xs">{status}</p>}
+        {status && <p className="text-red-400 text-xs animate-fade-in">{status}</p>}
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-vscode-sidebar text-vscode-fg">
+    <div className="h-full flex flex-col bg-vscode-sidebar text-vscode-fg animate-fade-in">
       {/* Header */}
       <div className="p-3 border-b border-vscode-activity flex justify-between items-center bg-vscode-activity/20">
           <div className="flex items-center gap-2 font-bold text-sm">
              {user && <img src={user.avatar_url} className="w-5 h-5 rounded-full" />}
              <span className="truncate max-w-[120px]">{user?.login}</span>
           </div>
-          <button onClick={handleLogout} title="Logout" className="hover:text-white"><LogOut size={14}/></button>
+          <button onClick={handleLogout} title="Logout" className="hover:text-white transition-colors"><LogOut size={14}/></button>
       </div>
 
       {view === 'sync' && repoConfig && (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col animate-slide-in-right">
               <div className="p-4 bg-vscode-bg/50 border-b border-vscode-activity flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                     <GitBranch size={16} className="text-vscode-accent" />
@@ -334,7 +334,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                         <div className="font-bold text-sm truncate">{repoConfig.name}</div>
                         <div className="text-[10px] text-gray-400 truncate">{repoConfig.html_url}</div>
                     </div>
-                    <button onClick={handleUnlink} className="text-xs bg-vscode-input px-2 py-1 rounded hover:text-red-400 flex items-center gap-1" title="Disconnect">
+                    <button onClick={handleUnlink} className="text-xs bg-vscode-input px-2 py-1 rounded hover:text-red-400 flex items-center gap-1 transition-colors" title="Disconnect">
                         <Unplug size={12} />
                     </button>
                 </div>
@@ -358,7 +358,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                 </div>
 
                 {status && (
-                    <div className={`text-[11px] p-2 rounded bg-vscode-input border border-vscode-border flex items-center gap-2 ${status.includes('error') || status.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
+                    <div className={`text-[11px] p-2 rounded bg-vscode-input border border-vscode-border flex items-center gap-2 animate-fade-in ${status.includes('error') || status.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
                         {status.includes('failed') ? <AlertCircle size={12}/> : <CheckCircle2 size={12}/>}
                         <span className="flex-1 break-words">{status}</span>
                     </div>
@@ -383,12 +383,12 @@ export const GitPanel: React.FC<GitPanelProps> = ({
       {/* Repo List */}
       <div className="flex-1 overflow-y-auto">
          {view === 'repos' && (
-             <div className="p-2">
+             <div className="p-2 animate-slide-in-right">
                  <div className="flex justify-between items-center px-2 pb-2">
                     <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Repositories</div>
                     <button 
                         onClick={() => setShowCreateForm(!showCreateForm)}
-                        className="p-1 hover:bg-vscode-hover rounded text-vscode-accent flex items-center gap-1 text-[10px]"
+                        className="p-1 hover:bg-vscode-hover rounded text-vscode-accent flex items-center gap-1 text-[10px] transition-colors"
                         title="Create New Repo"
                     >
                         <Plus size={14} /> New
@@ -397,10 +397,10 @@ export const GitPanel: React.FC<GitPanelProps> = ({
 
                  {/* Create Repo Form */}
                  {showCreateForm && (
-                     <div className="mx-2 mb-3 p-3 bg-vscode-activity rounded border border-vscode-border flex flex-col gap-2 shadow-lg">
+                     <div className="mx-2 mb-3 p-3 bg-vscode-activity rounded border border-vscode-border flex flex-col gap-2 shadow-lg animate-scale-in">
                          <div className="flex justify-between items-center text-xs font-bold">
                              <span>Create Repository</span>
-                             <button onClick={() => setShowCreateForm(false)}><X size={12}/></button>
+                             <button onClick={() => setShowCreateForm(false)} className="hover:text-white"><X size={12}/></button>
                          </div>
                          <input 
                             className="bg-vscode-input border border-vscode-border p-1.5 rounded text-xs text-white outline-none"
@@ -409,7 +409,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                             onChange={e => setNewRepoName(e.target.value)}
                          />
                          <div className="flex items-center gap-2 text-xs cursor-pointer select-none" onClick={() => setIsPrivate(!isPrivate)}>
-                             <div className={`w-3 h-3 border border-gray-400 rounded-sm flex items-center justify-center ${isPrivate ? 'bg-vscode-accent border-vscode-accent' : ''}`}>
+                             <div className={`w-3 h-3 border border-gray-400 rounded-sm flex items-center justify-center transition-colors ${isPrivate ? 'bg-vscode-accent border-vscode-accent' : ''}`}>
                                  {isPrivate && <div className="w-1.5 h-1.5 bg-white rounded-sm" />}
                              </div>
                              <span>Private</span>
@@ -417,17 +417,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                          <button 
                             onClick={handleCreateRepo}
                             disabled={loading || !newRepoName}
-                            className="bg-vscode-accent text-white py-1.5 rounded text-xs mt-1 disabled:opacity-50 font-bold"
+                            className="bg-vscode-accent text-white py-1.5 rounded text-xs mt-1 disabled:opacity-50 font-bold active:scale-95 transition-all"
                          >
                             {loading ? 'Creating...' : 'Create & Link'}
                          </button>
                      </div>
                  )}
 
-                 {repos.map(repo => (
+                 {repos.map((repo, idx) => (
                      <div 
                         key={repo.id}
-                        className="flex flex-col gap-2 p-2 hover:bg-vscode-hover rounded-sm group border-b border-transparent hover:border-vscode-activity transition-all"
+                        className="flex flex-col gap-2 p-2 hover:bg-vscode-hover rounded-sm group border-b border-transparent hover:border-vscode-activity transition-all animate-fade-in"
+                        style={{ animationDelay: `${idx * 0.05}s` }}
                      >
                         <div className="flex items-center gap-2">
                             <div className="bg-vscode-activity p-1.5 rounded text-gray-400">
@@ -443,14 +444,14 @@ export const GitPanel: React.FC<GitPanelProps> = ({
                         <div className="flex gap-2 pl-8">
                             <button 
                                 onClick={() => handleLink(repo)}
-                                className="flex-1 text-[10px] bg-vscode-input hover:bg-vscode-accent hover:text-white py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                                className="flex-1 text-[10px] bg-vscode-input hover:bg-vscode-accent hover:text-white py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors active:scale-95"
                                 title="Use this repo for current files"
                             >
                                 <LinkIcon size={10} /> Link (Push)
                             </button>
                             <button 
                                 onClick={() => handleClone(repo)}
-                                className="flex-1 text-[10px] bg-vscode-input hover:bg-vscode-accent hover:text-white py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                                className="flex-1 text-[10px] bg-vscode-input hover:bg-vscode-accent hover:text-white py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors active:scale-95"
                                 title="Overwrite local with repo files"
                             >
                                 <Download size={10} /> Clone (Pull)
@@ -462,7 +463,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
          )}
          
          {loading && view === 'repos' && (
-             <div className="flex flex-col items-center justify-center pt-10 text-gray-500 gap-2">
+             <div className="flex flex-col items-center justify-center pt-10 text-gray-500 gap-2 animate-fade-in">
                  <Loader2 className="animate-spin" />
                  <span className="text-xs">{status || 'Loading...'}</span>
              </div>
