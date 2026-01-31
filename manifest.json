@@ -10,13 +10,13 @@
   "description": "Mobile Code Editor",
   "icons": [
     {
-      "src": "https://images.icon-icons.com/3660/PNG/512/visual_studio_code_logo_microsoft_vs_icon_228486.png",
+      "src": "https://icon.icepanel.io/Technology/svg/Visual-Studio-Code-%28VS-Code%29.svg",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://images.icon-icons.com/3660/PNG/512/visual_studio_code_logo_microsoft_vs_icon_228486.png",
+      "src": "https://icon.icepanel.io/Technology/svg/Visual-Studio-Code-%28VS-Code%29.svg",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
