@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   return {
+    base: './', // Ensure relative paths for assets
     plugins: [react()],
     define: {
       // This ensures process.env.API_KEY in your code is replaced with the actual value during build
