@@ -224,19 +224,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
     const currentWord = words[words.length - 1];
 
+    // Always check for Emmet in HTML regardless of word boundaries defined by regex above
+    if (language === 'html') {
+        const potentialAbbr = extractAbbreviation(textBeforeCursor);
+        if (potentialAbbr && potentialAbbr.length > 0) {
+            const emmetResult = expandAbbreviation(potentialAbbr);
+            if (emmetResult) {
+                 newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet' });
+            }
+        }
+    }
+
     if (currentWord.length > 0) {
         let source: Suggestion[] = [];
         
         if (language === 'html') {
-            // Emmet Check
-            const potentialAbbr = extractAbbreviation(textBeforeCursor);
-            if (potentialAbbr && potentialAbbr.length > 0) {
-                const emmetResult = expandAbbreviation(potentialAbbr);
-                if (emmetResult) {
-                     newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet' });
-                }
-            }
-
             // Context Aware Suggestions (Attributes vs Tags)
             const lastOpenBracket = textBeforeCursor.lastIndexOf('<');
             const lastCloseBracket = textBeforeCursor.lastIndexOf('>');
@@ -493,7 +495,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             {/* Gutter */}
             {settings.lineNumbers && (
                 <div 
-                    className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-xs pt-5 pr-2 text-right select-none z-10 hidden sm:block"
+                    className="absolute top-0 left-0 bottom-0 w-10 bg-vscode-bg border-r border-transparent text-gray-600 font-mono text-xs pt-5 pr-2 text-right select-none z-10"
                     style={{ lineHeight: `${lineHeight}px` }}
                 >
                     {code.split('\n').map((_, i) => <div key={i} className={i === activeLineIndex ? 'text-gray-200 font-bold' : ''}>{i+1}</div>)}

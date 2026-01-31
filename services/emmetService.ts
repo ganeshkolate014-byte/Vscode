@@ -1,3 +1,4 @@
+
 // A lightweight Emmet-like parser for the browser
 // Supports: !, tag#id, tag.class, parent>child, tag*n
 
@@ -20,13 +21,13 @@ export const expandAbbreviation = (abbr: string): string | null => {
   }
 
   // Regex to validate if string looks like an emmet abbreviation
-  // Allow a-z, 0-9, #, ., >, *
-  const emmetRegex = /^[a-z0-9#.>*\-]+$/i;
+  // Allow a-z, 0-9, #, ., >, *, -, +
+  const emmetRegex = /^[a-z0-9#.>*\-+]+$/i;
   if (!emmetRegex.test(abbr)) return null;
 
   // If it's just a simple tag like "div" or "span", usually we let standard autocomplete handle it,
   // but if it has special chars like >, ., #, * it's definitely emmet.
-  const isComplex = /[#.>*\-]/.test(abbr);
+  const isComplex = /[#.>*\-+]/.test(abbr);
   if (!isComplex) return null; 
 
   try {
@@ -119,8 +120,17 @@ const parseSingleNode = (str: string, innerContent: string): string => {
 
 // Helper to extract the abbreviation from the current line/cursor position
 export const extractAbbreviation = (textBeforeCursor: string): string => {
-    // We look backwards from cursor. 
-    // Emmet abbreviations don't contain spaces.
-    const words = textBeforeCursor.split(/\s+/);
-    return words[words.length - 1];
+    // Find the last index of a character that is NOT allowed in emmet
+    // Allowed: a-z, 0-9, #, ., >, *, -, +, $
+    // We iterate backwards to find the start of the abbreviation
+    let i = textBeforeCursor.length - 1;
+    while (i >= 0) {
+        const char = textBeforeCursor[i];
+        if (!/[a-zA-Z0-9#.>*\-+$]/.test(char)) {
+            break;
+        }
+        i--;
+    }
+    // Slice from the character after the non-allowed char
+    return textBeforeCursor.slice(i + 1);
 };
