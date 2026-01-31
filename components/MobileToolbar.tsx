@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Undo, Redo, ArrowRightFromLine, AlignLeft, Palette } from 'lucide-react';
+import { Undo, Redo, ArrowRightFromLine, AlignLeft, Palette, Search } from 'lucide-react';
 import { ColorPickerModal } from './ColorPickerModal';
 
 interface MobileToolbarProps {
@@ -9,11 +9,12 @@ interface MobileToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   onFormat: () => void;
+  onSearch: () => void;
 }
 
 const SYMBOLS = ['<', '>', '/', '{', '}', '(', ')', '[', ']', '=', '"', "'", '`', ';', ':', '!', '-', '_', '$', '*', '.', ','];
 
-export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, onUndo, onRedo, onFormat }) => {
+export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, onUndo, onRedo, onFormat, onSearch }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
 
   return (
@@ -21,6 +22,15 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, o
         <div className="w-full h-12 bg-vscode-activity border-t border-vscode-border flex items-center overflow-x-auto no-scrollbar touch-pan-x z-40 select-none shadow-lg">
         <div className="flex px-2 gap-2 h-full items-center">
             
+            {/* Search Button */}
+            <button 
+            onMouseDown={(e) => { e.preventDefault(); onSearch(); }} 
+            className="h-8 px-3 bg-vscode-input rounded text-vscode-fg flex items-center justify-center hover:bg-vscode-accent active:bg-vscode-accent transition-colors"
+            title="Find"
+            >
+                <Search size={16} />
+            </button>
+
             {/* Format Action */}
             <button 
             onMouseDown={(e) => { e.preventDefault(); onFormat(); }} 

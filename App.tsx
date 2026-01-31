@@ -70,6 +70,9 @@ export default function App() {
   });
   const [showSettings, setShowSettings] = useState(false);
   
+  // Loading State for Top Bar
+  const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+  
   // Preview State
   const [isPreviewVisible, setIsPreviewVisible] = useState(false);
 
@@ -310,6 +313,14 @@ export default function App() {
 
   return (
     <div className="flex flex-col bg-vscode-bg text-vscode-fg font-sans w-full" style={{ height: viewportHeight, overflow: 'hidden' }}>
+      
+      {/* Global Loading Bar */}
+      {isGlobalLoading && (
+        <div className="absolute top-0 left-0 right-0 h-[2px] w-full z-[100] bg-transparent overflow-hidden pointer-events-none">
+            <div className="animate-loader h-full w-full"></div>
+        </div>
+      )}
+
       <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} settings={settings} onUpdate={setSettings} />
 
       {/* 1. Main Workspace Area */}
@@ -348,6 +359,7 @@ export default function App() {
                  onUpdateFileNode={handleUpdateFileNode}
                  repoConfig={repoConfig}
                  onSetRepoConfig={setRepoConfig}
+                 onSetGlobalLoading={setIsGlobalLoading}
                />
              )}
              <div className="md:hidden absolute top-0 -right-12 w-12 h-full" onClick={() => setActiveSideBar(null)} />

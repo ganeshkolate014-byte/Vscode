@@ -13,6 +13,7 @@ import { Suggestion, EditorSettings } from '../types';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { formatCode } from '../services/formattingService';
 import { MobileToolbar } from './MobileToolbar';
+import { Search, ArrowUp, ArrowDown, X } from 'lucide-react';
 
 interface CodeEditorProps {
   code: string;
@@ -54,6 +55,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const [charSize, setCharSize] = useState({ width: 0, height: 0 });
   const [activeLineIndex, setActiveLineIndex] = useState(0);
   
+  // Search State
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchMatches, setSearchMatches] = useState<number[]>([]);
+  const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const nextCursorPosRef = useRef<number | null>(null); 
@@ -84,6 +92,78 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       window.addEventListener('resize', measureChar);
       return () => window.removeEventListener('resize', measureChar);
   }, [settings.fontSize]);
+
+  // --- Search Logic ---
+  useEffect(() => {
+      if (!searchTerm) {
+          setSearchMatches([]);
+          setCurrentMatchIdx(0);
+          return;
+      }
+      
+      const indices: number[] = [];
+      // Case insensitive search
+      const lowerCode = code.toLowerCase();
+      const lowerTerm = searchTerm.toLowerCase();
+      
+      let pos = lowerCode.indexOf(lowerTerm);
+      while (pos !== -1) {
+          indices.push(pos);
+          pos = lowerCode.indexOf(lowerTerm, pos + 1);
+      }
+      
+      setSearchMatches(indices);
+      
+      // If matches found, jump to the one closest to cursor or first
+      if (indices.length > 0) {
+          const currentPos = textareaRef.current?.selectionStart || 0;
+          const nextMatch = indices.findIndex(idx => idx >= currentPos);
+          setCurrentMatchIdx(nextMatch !== -1 ? nextMatch : 0);
+      } else {
+          setCurrentMatchIdx(0);
+      }
+  }, [searchTerm, code]);
+
+  useEffect(() => {
+     if (showSearch && searchInputRef.current) {
+         searchInputRef.current.focus();
+     }
+  }, [showSearch]);
+
+  const jumpToMatch = (idx: number) => {
+      if (searchMatches.length === 0 || !textareaRef.current || !containerRef.current) return;
+      
+      // Handle wrap around
+      let newIdx = idx;
+      if (newIdx < 0) newIdx = searchMatches.length - 1;
+      if (newIdx >= searchMatches.length) newIdx = 0;
+      
+      setCurrentMatchIdx(newIdx);
+      
+      const startPos = searchMatches[newIdx];
+      const endPos = startPos + searchTerm.length;
+      
+      // Select the text in textarea (Highlights it)
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(startPos, endPos);
+      
+      // Scroll to view
+      const textBefore = code.substring(0, startPos);
+      const lines = textBefore.split('\n');
+      const lineNum = lines.length - 1;
+      
+      // Center the match vertically if possible
+      const targetScrollTop = (lineNum * lineHeight) - (containerRef.current.clientHeight / 2) + (lineHeight / 2);
+      containerRef.current.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+      
+      // Update cursor tracking
+      setActiveLineIndex(lineNum);
+  };
+
+  const handleNextMatch = () => jumpToMatch(currentMatchIdx + 1);
+  const handlePrevMatch = () => jumpToMatch(currentMatchIdx - 1);
+
+  // --- End Search Logic ---
 
   const highlightedCode = useMemo(() => {
       try {
@@ -318,6 +398,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Search Shortcut (Ctrl/Cmd + F)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch(true);
+        return;
+    }
+
     if (e.shiftKey && e.altKey && e.code === 'KeyF') {
         e.preventDefault();
         handleFormat();
@@ -424,11 +511,60 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     wordWrap: settings.wordWrap ? 'break-word' : 'normal',
     overflowWrap: 'anywhere',
     tabSize: 2,
-    boxSizing: 'border-box'
+    boxSizing: 'border-box',
+    textTransform: 'none'
   };
 
   return (
     <div className="relative w-full h-full flex flex-col bg-vscode-bg">
+      {/* Search Widget */}
+      {showSearch && (
+          <div className="absolute top-2 right-2 z-50 flex items-center bg-[#252526] p-1 rounded shadow-xl border border-[#454545] animate-scale-in">
+             <div className="relative flex items-center">
+                 <Search size={14} className="absolute left-2 text-gray-400 pointer-events-none"/>
+                 <input 
+                    ref={searchInputRef}
+                    className="bg-vscode-input text-white text-sm pl-8 pr-2 py-1 w-32 md:w-48 outline-none border border-transparent focus:border-vscode-accent rounded-sm placeholder-gray-500"
+                    placeholder="Find"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (e.shiftKey) handlePrevMatch();
+                            else handleNextMatch();
+                        }
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setShowSearch(false);
+                            textareaRef.current?.focus();
+                        }
+                    }}
+                 />
+             </div>
+             
+             <div className="flex items-center ml-1 text-xs text-gray-400 min-w-[50px] justify-center select-none">
+                 {searchMatches.length > 0 ? (
+                     <span>{currentMatchIdx + 1} of {searchMatches.length}</span>
+                 ) : (
+                     <span className={searchTerm ? "text-red-400" : ""}>No results</span>
+                 )}
+             </div>
+
+             <div className="flex items-center ml-1 border-l border-[#454545] pl-1 gap-0.5">
+                 <button onClick={handlePrevMatch} className="p-1 hover:bg-[#383b3d] rounded text-gray-300" title="Previous (Shift+Enter)">
+                     <ArrowUp size={14} />
+                 </button>
+                 <button onClick={handleNextMatch} className="p-1 hover:bg-[#383b3d] rounded text-gray-300" title="Next (Enter)">
+                     <ArrowDown size={14} />
+                 </button>
+                 <button onClick={() => { setShowSearch(false); textareaRef.current?.focus(); }} className="p-1 hover:bg-[#383b3d] rounded text-gray-300 ml-1">
+                     <X size={14} />
+                 </button>
+             </div>
+          </div>
+      )}
+
       <div 
         ref={containerRef}
         className="relative flex-1 overflow-auto bg-vscode-bg scroll-smooth" 
@@ -482,10 +618,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 onKeyDown={handleKeyDown}
                 onClick={updateCursorPosition}
                 onKeyUp={updateCursorPosition} 
+                
                 spellCheck={false}
                 autoCorrect="off"
-                autoCapitalize="none"
+                autoCapitalize="off"
                 autoComplete="off"
+                inputMode="text"
+                
                 className="absolute inset-0 w-full h-full overflow-hidden resize-none outline-none z-20 text-transparent bg-transparent caret-white"
                 style={{ 
                     ...commonStyle,
@@ -554,6 +693,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 }
              }}
              onFormat={handleFormat}
+             onSearch={() => setShowSearch(!showSearch)}
            />
        )}
     </div>

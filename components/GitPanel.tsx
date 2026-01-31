@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Github, LogIn, Download, Upload, LogOut, Loader2, GitBranch, AlertCircle, CheckCircle2, Plus, Lock, Globe, X, Link as LinkIcon, ArrowRight, Unplug } from 'lucide-react';
+import { Github, LogIn, Download, Upload, LogOut, Loader2, GitBranch, AlertCircle, CheckCircle2, Plus, Lock, Globe, X, Link as LinkIcon, Unplug } from 'lucide-react';
 import { validateToken, getUserRepos, getRepoTree, getBlob, updateFile, createRepo } from '../services/githubService';
 import { FileNode, RepoConfig } from '../types';
 
@@ -10,6 +10,7 @@ interface GitPanelProps {
   onUpdateFileNode: (id: string, sha: string) => void;
   repoConfig: RepoConfig | null;
   onSetRepoConfig: (config: RepoConfig | null) => void;
+  onSetGlobalLoading: (isLoading: boolean) => void;
 }
 
 export const GitPanel: React.FC<GitPanelProps> = ({ 
@@ -17,7 +18,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({
   onImport, 
   onUpdateFileNode, 
   repoConfig, 
-  onSetRepoConfig 
+  onSetRepoConfig,
+  onSetGlobalLoading
 }) => {
   const [token, setToken] = useState(localStorage.getItem('gh_token') || '');
   const [user, setUser] = useState<any>(null);
@@ -48,6 +50,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
 
   const handleLogin = async (inputToken: string, isAuto = false) => {
     setLoading(true);
+    onSetGlobalLoading(true);
     setStatus('');
     try {
       const userData = await validateToken(inputToken);
@@ -71,6 +74,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
       }
     } finally {
       setLoading(false);
+      onSetGlobalLoading(false);
     }
   };
 
@@ -86,6 +90,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
   const handleCreateRepo = async () => {
       if (!newRepoName.trim()) return;
       setLoading(true);
+      onSetGlobalLoading(true);
       try {
           const hasFiles = files.length > 0;
           const newRepo = await createRepo(token, newRepoName, isPrivate, !hasFiles);
@@ -108,6 +113,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
           setStatus(`Error: ${err.message}`);
       } finally {
           setLoading(false);
+          onSetGlobalLoading(false);
       }
   };
 
@@ -115,6 +121,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
     if (!confirm('This will overwrite your current local files. Continue?')) return;
     
     setLoading(true);
+    onSetGlobalLoading(true);
     setStatus('Fetching file structure...');
     
     try {
@@ -193,6 +200,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
       setStatus(`Clone failed: ${err.message}`);
     } finally {
       setLoading(false);
+      onSetGlobalLoading(false);
     }
   };
 
@@ -218,6 +226,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
   const handlePush = async () => {
     if (!repoConfig) return;
     setLoading(true);
+    onSetGlobalLoading(true);
     setStatus('Preparing push...');
     
     try {
@@ -281,6 +290,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({
         setStatus(`Push failed: ${e.message}`);
     } finally {
         setLoading(false);
+        onSetGlobalLoading(false);
     }
   };
 

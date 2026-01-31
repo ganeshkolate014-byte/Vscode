@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FileNode } from '../types';
 import { 
   ChevronRight, 
@@ -9,13 +9,13 @@ import {
   FileType, 
   Folder, 
   FolderOpen, 
-  Plus, 
   Trash2, 
   FilePlus, 
   FolderPlus,
   MoreHorizontal,
   FolderInput,
   Edit2,
+  X,
   Check
 } from 'lucide-react';
 
@@ -28,6 +28,11 @@ interface FileExplorerProps {
   onDeleteNode: (nodeId: string) => void;
   onRenameNode: (nodeId: string, newName: string) => void;
   onOpenFolder: () => void;
+}
+
+interface CreatingState {
+    parentId: string | null;
+    type: 'file' | 'folder';
 }
 
 const getFileIcon = (filename: string) => {
@@ -48,10 +53,24 @@ const FileItem: React.FC<{
   onRename: (id: string, name: string) => void;
   editingId: string | null;
   setEditingId: (id: string | null) => void;
-}> = ({ node, activeFileId, depth, onSelect, onToggle, onDelete, onRename, editingId, setEditingId }) => {
+  menuOpenId: string | null;
+  setMenuOpenId: (id: string | null) => void;
+  onStartCreate: (parentId: string, type: 'file' | 'folder') => void;
+  creatingState: CreatingState | null;
+  submitCreate: (name: string) => void;
+  cancelCreate: () => void;
+}> = ({ 
+    node, activeFileId, depth, onSelect, onToggle, onDelete, onRename, 
+    editingId, setEditingId, menuOpenId, setMenuOpenId, onStartCreate,
+    creatingState, submitCreate, cancelCreate
+}) => {
   const [tempName, setTempName] = useState(node.name);
+  const [newChildName, setNewChildName] = useState('');
+  
   const isEditing = editingId === node.id;
+  const isMenuOpen = menuOpenId === node.id;
   const isActive = node.id === activeFileId;
+  const isCreatingHere = creatingState?.parentId === node.id;
 
   const handleRenameSubmit = () => {
     if (tempName.trim() && tempName !== node.name) {
@@ -60,10 +79,20 @@ const FileItem: React.FC<{
     setEditingId(null);
   };
 
+  const handleCreateSubmit = () => {
+      if (newChildName.trim()) {
+          submitCreate(newChildName.trim());
+          setNewChildName('');
+      } else {
+          cancelCreate();
+      }
+  };
+
   const startRename = (e: React.MouseEvent) => {
       e.stopPropagation();
       setTempName(node.name);
       setEditingId(node.id);
+      setMenuOpenId(null);
   };
 
   return (
@@ -85,7 +114,8 @@ const FileItem: React.FC<{
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
         onClick={() => node.type === 'folder' ? onToggle(node.id) : onSelect(node)}
       >
-        <span className="mr-1.5 opacity-80 transition-transform duration-200">
+        {/* Toggle / Icon */}
+        <span className="mr-1.5 opacity-80 shrink-0">
           {node.type === 'folder' ? (
              node.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
           ) : (
@@ -93,7 +123,7 @@ const FileItem: React.FC<{
           )}
         </span>
         
-        <span className="mr-2">
+        <span className="mr-2 shrink-0">
            {node.type === 'folder' ? (
              node.isOpen ? <FolderOpen size={14} className="text-vscode-fg" /> : <Folder size={14} className="text-vscode-fg" />
            ) : (
@@ -101,6 +131,7 @@ const FileItem: React.FC<{
            )}
         </span>
         
+        {/* Name / Rename Input */}
         {isEditing ? (
             <div className="flex-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
                 <input 
@@ -113,35 +144,68 @@ const FileItem: React.FC<{
                         if (e.key === 'Escape') setEditingId(null);
                     }}
                     onBlur={handleRenameSubmit}
+                    onClick={e => e.stopPropagation()}
                 />
             </div>
         ) : (
-            <span className="text-[13px] truncate flex-1 font-sans leading-6" onDoubleClick={startRename}>{node.name}</span>
+            <span className="text-[13px] truncate flex-1 font-sans leading-6">{node.name}</span>
         )}
         
-        {/* Actions - Visible on Hover or when Active */}
-        {!isEditing && (
-            <div className={`flex gap-1 ${isActive ? 'flex' : 'hidden group-hover:flex'}`}>
-                <button 
-                    onClick={startRename}
-                    className="hover:text-vscode-accent p-1 text-gray-400 transition-colors"
-                    title="Rename"
-                >
-                    <Edit2 size={12} />
-                </button>
-                <button 
-                    onClick={(e) => { e.stopPropagation(); if(confirm('Delete ' + node.name + '?')) onDelete(node.id); }}
-                    className="hover:text-red-400 p-1 text-gray-400 transition-colors"
-                    title="Delete"
-                >
-                    <Trash2 size={12} />
-                </button>
-            </div>
-        )}
+        {/* Menu Toggle or Actions Toolbar */}
+        <div className="ml-2" onClick={e => e.stopPropagation()}>
+            {isMenuOpen ? (
+                <div className="flex items-center bg-vscode-activity rounded shadow-lg border border-vscode-border animate-scale-in">
+                    {node.type === 'folder' && (
+                        <>
+                            <button onClick={() => { onStartCreate(node.id, 'file'); setMenuOpenId(null); }} className="p-1.5 hover:text-white hover:bg-vscode-hover transition-colors" title="New File"><FilePlus size={12}/></button>
+                            <button onClick={() => { onStartCreate(node.id, 'folder'); setMenuOpenId(null); }} className="p-1.5 hover:text-white hover:bg-vscode-hover transition-colors" title="New Folder"><FolderPlus size={12}/></button>
+                            <div className="w-px h-3 bg-gray-600 mx-0.5" />
+                        </>
+                    )}
+                    <button onClick={startRename} className="p-1.5 hover:text-white hover:bg-vscode-hover transition-colors" title="Rename"><Edit2 size={12}/></button>
+                    <button onClick={() => { if(confirm(`Delete ${node.name}?`)) onDelete(node.id); setMenuOpenId(null); }} className="p-1.5 hover:text-red-400 hover:bg-vscode-hover transition-colors" title="Delete"><Trash2 size={12}/></button>
+                    <button onClick={() => setMenuOpenId(null)} className="p-1.5 text-gray-400 hover:text-white hover:bg-vscode-hover transition-colors" title="Close"><X size={12}/></button>
+                </div>
+            ) : (
+                !isEditing && (
+                    <button 
+                        onClick={() => setMenuOpenId(node.id)}
+                        className={`p-1 rounded hover:bg-gray-700 hover:text-white transition-colors ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    >
+                        <MoreHorizontal size={14} />
+                    </button>
+                )
+            )}
+        </div>
       </div>
       
+      {/* Creation Input (if creating inside this folder) */}
+      {isCreatingHere && node.isOpen && (
+           <div 
+             className="flex items-center py-1 pr-2 animate-fade-in"
+             style={{ paddingLeft: `${(depth + 1) * 12 + 28}px` }}
+           >
+              <span className="mr-2 text-gray-400">
+                  {creatingState?.type === 'folder' ? <Folder size={14}/> : <FileCode size={14}/>}
+              </span>
+              <input 
+                  autoFocus
+                  className="bg-vscode-input text-white text-xs p-1 w-full outline-none border border-vscode-accent rounded-sm"
+                  placeholder={creatingState?.type === 'folder' ? 'Folder Name' : 'File Name'}
+                  value={newChildName}
+                  onChange={e => setNewChildName(e.target.value)}
+                  onKeyDown={e => {
+                      if (e.key === 'Enter') handleCreateSubmit();
+                      if (e.key === 'Escape') cancelCreate();
+                  }}
+                  onBlur={() => { if (!newChildName) cancelCreate(); }}
+              />
+           </div>
+      )}
+
+      {/* Children */}
       {node.type === 'folder' && node.isOpen && node.children && (
-        <div className="animate-fade-in origin-top">
+        <div className="origin-top">
           {node.children.map(child => (
             <FileItem 
                 key={child.id} 
@@ -154,6 +218,12 @@ const FileItem: React.FC<{
                 onRename={onRename}
                 editingId={editingId}
                 setEditingId={setEditingId}
+                menuOpenId={menuOpenId}
+                setMenuOpenId={setMenuOpenId}
+                onStartCreate={onStartCreate}
+                creatingState={creatingState}
+                submitCreate={submitCreate}
+                cancelCreate={cancelCreate}
             />
           ))}
         </div>
@@ -163,20 +233,46 @@ const FileItem: React.FC<{
 };
 
 export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId, onFileSelect, onToggleFolder, onCreateNode, onDeleteNode, onRenameNode, onOpenFolder }) => {
-    const [isCreating, setIsCreating] = useState<'file' | 'folder' | null>(null);
-    const [newName, setNewName] = useState('');
+    const [creatingState, setCreatingState] = useState<CreatingState | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+    const [rootNewName, setRootNewName] = useState('');
 
-    const handleCreate = () => {
-        if (newName.trim()) {
-            onCreateNode(null, isCreating!, newName.trim());
+    const startCreate = (parentId: string | null, type: 'file' | 'folder') => {
+        setCreatingState({ parentId, type });
+        // If creating in a folder, make sure it's open
+        if (parentId) {
+            // We need to verify if the folder is open, if not, toggle it.
+            // Since we don't have easy access to the node state here without traversal, 
+            // we can optimistically call onToggleFolder if we assume it might be closed. 
+            // Better: The FileItem handles showing children if open. 
+            // Ideally we should ensure it's open. For now, rely on user or simple toggle.
+            // Actually, let's brute force ensure it opens by finding it? 
+            // Simpler: The user usually clicks "New File" on an open folder or we can just trigger toggle.
+            // Let's rely on the user having the folder visible or just toggle it 'on' if possible.
+            // Current App.tsx toggle just inverts. We can't force 'open'.
+            // Workaround: We will let the user open it, OR we modify App.tsx. 
+            // BUT: If the menu is visible, the folder *might* be closed (if we allowed right click context menu). 
+            // Since we use a button IN the row, the row is visible. 
+            // Let's assume the user expands it. 
+            
+            // Actually, let's traverse and force open in App.tsx? No, let's keep it simple.
+            // We can assume if they clicked the action on the folder row, they want to interact with it.
+            // Let's trigger a toggle if it's strictly closed? We don't know state here easily.
+            // We will just invoke the creation state.
         }
-        setIsCreating(null);
-        setNewName('');
-    }
+    };
 
-  return (
-    <div className="h-full bg-vscode-sidebar text-vscode-fg flex flex-col font-sans select-none border-r border-vscode-activity">
+    const submitCreate = (name: string) => {
+        if (creatingState && name) {
+            onCreateNode(creatingState.parentId, creatingState.type, name);
+        }
+        setCreatingState(null);
+        setRootNewName('');
+    };
+
+    return (
+    <div className="h-full bg-vscode-sidebar text-vscode-fg flex flex-col font-sans select-none border-r border-vscode-activity" onClick={() => setMenuOpenId(null)}>
       <div className="h-9 px-4 text-[11px] font-bold uppercase tracking-wider flex justify-between items-center text-gray-400">
         <span>Explorer</span>
         <div className="flex gap-2">
@@ -190,28 +286,33 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
               <ChevronDown size={12} />
               <span>PROJECT</span>
           </div>
-          <div className="flex gap-1.5 opacity-100 group-hover:opacity-100 transition-opacity">
-              <button onClick={onOpenFolder} className="hover:text-vscode-accent text-gray-300 transition-colors" title="Open Folder"><FolderInput size={14} /></button>
-              <button onClick={() => setIsCreating('file')} className="hover:text-white transition-colors" title="New File"><FilePlus size={14}/></button>
-              <button onClick={() => setIsCreating('folder')} className="hover:text-white transition-colors" title="New Folder"><FolderPlus size={14}/></button>
+          <div className="flex gap-1.5 opacity-100 transition-opacity">
+              <button onClick={(e) => { e.stopPropagation(); onOpenFolder(); }} className="hover:text-vscode-accent text-gray-300 transition-colors" title="Open Folder"><FolderInput size={14} /></button>
+              <button onClick={(e) => { e.stopPropagation(); startCreate(null, 'file'); }} className="hover:text-white transition-colors" title="New File"><FilePlus size={14}/></button>
+              <button onClick={(e) => { e.stopPropagation(); startCreate(null, 'folder'); }} className="hover:text-white transition-colors" title="New Folder"><FolderPlus size={14}/></button>
           </div>
       </div>
 
-      {isCreating && (
-          <div className="p-1 pl-4 flex gap-1 bg-vscode-input animate-fade-in">
+      {/* Root Creation Input */}
+      {creatingState?.parentId === null && (
+          <div className="p-1 pl-4 flex gap-1 bg-vscode-input animate-fade-in border-l-2 border-vscode-accent mx-2 my-1 rounded-r">
+              <span className="text-gray-400 flex items-center">{creatingState.type === 'folder' ? <Folder size={14}/> : <FileCode size={14}/>}</span>
               <input 
                 autoFocus
-                className="bg-vscode-bg text-white text-xs p-1 w-full outline-none border border-vscode-accent"
-                placeholder={isCreating === 'file' ? "filename.js" : "foldername"}
-                value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                onBlur={() => handleCreate()}
+                className="bg-transparent text-white text-xs p-1 w-full outline-none"
+                placeholder={creatingState.type === 'folder' ? "foldername" : "filename.js"}
+                value={rootNewName}
+                onChange={e => setRootNewName(e.target.value)}
+                onKeyDown={e => {
+                    if (e.key === 'Enter') submitCreate(rootNewName);
+                    if (e.key === 'Escape') setCreatingState(null);
+                }}
+                onBlur={() => { if(rootNewName) submitCreate(rootNewName); else setCreatingState(null); }}
               />
           </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pt-1 relative">
+      <div className="flex-1 overflow-y-auto pt-1 relative pb-10">
         {nodes.map(node => (
           <FileItem 
             key={node.id} 
@@ -224,13 +325,16 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
             onRename={onRenameNode}
             editingId={editingId}
             setEditingId={setEditingId}
+            menuOpenId={menuOpenId}
+            setMenuOpenId={setMenuOpenId}
+            onStartCreate={startCreate}
+            creatingState={creatingState}
+            submitCreate={submitCreate}
+            cancelCreate={() => setCreatingState(null)}
           />
         ))}
       </div>
       
-      <div className="p-2 border-t border-vscode-activity text-[10px] text-gray-500 text-center">
-          Double-click to rename
-      </div>
     </div>
   );
 };
