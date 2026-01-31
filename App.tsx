@@ -2,25 +2,22 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { CodeEditor } from './components/CodeEditor';
 import { FileExplorer } from './components/FileExplorer';
-import { LivePreview } from './components/LivePreview';
 import { GitPanel } from './components/GitPanel';
 import { SettingsModal } from './components/SettingsModal';
+import { LivePreview } from './components/LivePreview';
 import { FileNode, ChatMessage, RepoConfig, EditorSettings } from './types';
 import { 
   Files, 
   Search, 
   GitGraph, 
-  Play, 
+  Play,
   Settings, 
   X, 
   MessageSquare, 
   Send, 
   Code2, 
-  Maximize2,
-  Columns
 } from 'lucide-react';
 import { generateCodeHelp } from './services/geminiService';
-import { formatCode } from './services/formattingService';
 
 const initialFiles: FileNode[] = [
   {
@@ -61,7 +58,6 @@ export default function App() {
   const [openFiles, setOpenFiles] = useState<string[]>(['1']); 
   const [activeFileId, setActiveFileId] = useState<string>('1');
   const [activeSideBar, setActiveSideBar] = useState<string | null>('explorer');
-  const [previewMode, setPreviewMode] = useState<'hidden' | 'full' | 'split'>('hidden');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
@@ -79,6 +75,9 @@ export default function App() {
       return saved ? JSON.parse(saved) : { fontSize: 14, wordWrap: false, lineNumbers: true, autoSave: true };
   });
   const [showSettings, setShowSettings] = useState(false);
+  
+  // Preview State
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
 
   const [viewportHeight, setViewportHeight] = useState('100%');
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -127,7 +126,7 @@ export default function App() {
       localStorage.setItem('droidcoder_settings', JSON.stringify(settings));
   }, [settings]);
 
-  const getFileContent = (name: string) => {
+  const getFileContent = useCallback((name: string) => {
       const findContent = (nodes: FileNode[]): string | undefined => {
           for (const node of nodes) {
               if (node.name === name && node.type === 'file') return node.content;
@@ -139,8 +138,8 @@ export default function App() {
           return undefined;
       };
       return findContent(debouncedFiles) || '';
-  };
-  
+  }, [debouncedFiles]);
+
   const activeFile = useMemo(() => {
       const findNode = (nodes: FileNode[]): FileNode | undefined => {
           for (const node of nodes) {
@@ -229,6 +228,7 @@ export default function App() {
     if (!openFiles.includes(node.id)) setOpenFiles(prev => [...prev, node.id]);
     setActiveFileId(node.id);
     if (window.innerWidth < 768) setActiveSideBar(null);
+    setIsPreviewVisible(false); // Switch back to edit mode on file select
   };
 
   const closeTab = (e: React.MouseEvent, id: string) => {
@@ -289,8 +289,6 @@ export default function App() {
     setChatMessages(prev => [...prev, { role: 'model', text: response }]);
     setIsChatLoading(false);
   };
-
-  const togglePreviewMode = () => setPreviewMode(m => m === 'hidden' ? 'split' : m === 'split' ? 'full' : 'hidden');
   
   const findActiveNode = (nodes: FileNode[], id: string): FileNode | undefined => {
       for (const node of nodes) {
@@ -402,7 +400,7 @@ export default function App() {
           </div>
         )}
 
-        {/* C. Editor & Preview Group */}
+        {/* C. Editor Group */}
         <div className="flex-1 flex flex-col min-w-0 bg-vscode-bg relative transition-all duration-300">
           
           {/* C1. Tabs Header */}
@@ -410,11 +408,11 @@ export default function App() {
              {openFiles.map(fid => {
                  const node = findActiveNode(files, fid);
                  if (!node) return null;
-                 const isActive = activeFileId === fid;
+                 const isActive = activeFileId === fid && !isPreviewVisible;
                  return (
                      <div 
                         key={fid}
-                        onClick={() => setActiveFileId(fid)}
+                        onClick={() => { setActiveFileId(fid); setIsPreviewVisible(false); }}
                         className={`flex items-center px-3 min-w-[100px] max-w-[150px] border-r border-vscode-border cursor-pointer select-none group transition-colors duration-200 ${isActive ? 'bg-vscode-tabActive text-white border-t-2 border-t-vscode-accent' : 'bg-vscode-tabInactive text-gray-400 hover:bg-vscode-bg'}`}
                      >
                         <span className="truncate text-xs flex-1 mr-2">{node.name}</span>
@@ -431,50 +429,44 @@ export default function App() {
              {/* Right Controls in Tab Bar */}
              <div className="flex-1 bg-vscode-sidebar border-b border-black flex items-center justify-end px-2 gap-2">
                  <button 
-                    onClick={togglePreviewMode} 
-                    className={`p-1 rounded hover:bg-gray-700 transition-colors ${previewMode !== 'hidden' ? 'text-vscode-accent' : 'text-gray-400'}`}
-                    title="Toggle Preview Mode"
+                    onClick={() => setIsPreviewVisible(!isPreviewVisible)}
+                    className={`p-1 rounded transition-colors flex items-center gap-2 px-2 text-xs font-bold ${isPreviewVisible ? 'bg-vscode-accent text-white' : 'hover:bg-gray-700 text-green-500'}`}
+                    title={isPreviewVisible ? "Back to Code" : "Run Code"}
                  >
-                    {previewMode === 'split' ? <Columns size={16} /> : previewMode === 'full' ? <Maximize2 size={16} /> : <Play size={16} />}
+                    {isPreviewVisible ? (
+                        <><Code2 size={14} /> Code</>
+                    ) : (
+                        <><Play size={14} /> Run</>
+                    )}
                  </button>
              </div>
           </div>
 
-          {/* C2. Content Area (Editor + Preview) */}
-          <div className="flex-1 flex flex-col md:flex-row relative overflow-hidden">
+          {/* C2. Content Area (Editor OR Preview) */}
+          <div className="flex-1 flex flex-col relative overflow-hidden">
              
-             {/* EDITOR PANE */}
-             <div className={`${previewMode === 'full' ? 'hidden' : 'flex-1'} relative h-full border-r border-black transition-all duration-300`}>
-                {currentActiveNode ? (
-                    <CodeEditor 
-                        code={currentActiveNode.content || ''} 
-                        language={currentActiveNode.language || 'html'} 
-                        onChange={handleCodeChange}
-                        settings={settings}
-                    />
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4 animate-fade-in">
-                        <Code2 size={48} className="opacity-20" />
-                        <p className="text-sm">Select a file or Open Folder</p>
-                    </div>
-                )}
-             </div>
-
-             {/* PREVIEW PANE */}
-             {(previewMode !== 'hidden') && (
-                <div className={`${previewMode === 'split' ? 'h-1/2 md:h-full md:w-1/2' : 'absolute inset-0 z-40'} bg-white flex flex-col border-t md:border-t-0 md:border-l border-black animate-slide-in-right shadow-xl`}>
-                   <div className="h-6 bg-gray-100 border-b flex items-center px-4 text-[10px] text-gray-600 justify-between shrink-0">
-                      <span>Live Preview</span>
-                      <button onClick={() => setPreviewMode('hidden')} className="hover:text-red-500 transition-colors"><X size={12}/></button>
-                   </div>
-                   <div className="flex-1 relative">
-                        <LivePreview 
-                            html={getFileContent('index.html')} 
-                            css={getFileContent('style.css')} 
-                            js={getFileContent('script.js')} 
+             {isPreviewVisible ? (
+                 <LivePreview 
+                    html={getFileContent('index.html') || ''} 
+                    css={getFileContent('style.css') || ''} 
+                    js={getFileContent('script.js') || ''} 
+                 />
+             ) : (
+                 <div className="flex-1 relative h-full transition-all duration-300">
+                    {currentActiveNode ? (
+                        <CodeEditor 
+                            code={currentActiveNode.content || ''} 
+                            language={currentActiveNode.language || 'html'} 
+                            onChange={handleCodeChange}
+                            settings={settings}
                         />
-                   </div>
-                </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4 animate-fade-in">
+                            <Code2 size={48} className="opacity-20" />
+                            <p className="text-sm">Select a file or Open Folder</p>
+                        </div>
+                    )}
+                 </div>
              )}
           </div>
         </div>
@@ -487,10 +479,11 @@ export default function App() {
            <ActivityIcon icon={<Search size={20} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
            
            <div 
-            className="w-12 h-12 -mt-6 bg-vscode-accent rounded-full flex items-center justify-center shadow-lg border-4 border-vscode-bg cursor-pointer hover:scale-105 transition-transform" 
-            onClick={togglePreviewMode}
+            className={`w-12 h-12 -mt-6 rounded-full flex items-center justify-center shadow-lg border-4 border-vscode-bg cursor-pointer hover:scale-105 transition-transform ${isPreviewVisible ? 'bg-vscode-accent' : 'bg-green-600'}`} 
+            onClick={() => setIsPreviewVisible(!isPreviewVisible)}
+            title={isPreviewVisible ? "Edit Code" : "Run Code"}
            >
-               {previewMode === 'hidden' ? <Play size={24} className="text-white ml-1" /> : <Code2 size={24} className="text-white" />}
+               {isPreviewVisible ? <Code2 size={24} className="text-white" /> : <Play size={24} className="text-white ml-1" />}
            </div>
            
            <ActivityIcon icon={<GitGraph size={20} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
