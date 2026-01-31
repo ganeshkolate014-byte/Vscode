@@ -1,13 +1,17 @@
 
-const CACHE_NAME = 'vscode-pwa-v3';
+const CACHE_NAME = 'vscode-pwa-v4';
 const OFFLINE_URL = './index.html';
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  self.skipWaiting(); // Force this new service worker to activate immediately
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Explicitly cache index.html
-      return cache.add(new Request(OFFLINE_URL, {cache: 'reload'}));
+      // Cache essential files for offline use
+      return cache.addAll([
+        './',
+        OFFLINE_URL,
+        './manifest.json'
+      ]);
     })
   );
 });
@@ -18,39 +22,73 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
     })
   );
-  self.clients.claim();
+  self.clients.claim(); // Take control of all clients immediately
 });
 
 self.addEventListener('fetch', (event) => {
-  // For navigation requests (like opening the app), try network first, then fallback to index.html
+  // 1. Handle Navigation Requests (HTML)
+  // Strategy: Network First. If network fails OR returns 404/500, fallback to cache.
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
-        .catch(() => {
-          return caches.match(OFFLINE_URL);
+        .then((response) => {
+          // If the server returns a valid page, return it
+          if (response && response.status === 200) {
+            return response;
+          }
+          // If server returns 404 or other error, fallback to cache
+          throw new Error('Server returned ' + response.status);
+        })
+        .catch((error) => {
+          console.log('Navigation fetch failed or returned error, falling back to cache:', error);
+          return caches.match(OFFLINE_URL)
+            .then((cachedResponse) => {
+               // If index.html is in cache, return it
+               if (cachedResponse) return cachedResponse;
+               // Last ditch: try to find anything matching ./
+               return caches.match('./');
+            });
         })
     );
     return;
   }
 
-  // For assets, try cache first, then network, then cache the result
+  // 2. Handle Asset Requests (JS, CSS, Images)
+  // Strategy: Cache First, then Network (and update cache)
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((networkResponse) => {
-         // Only cache valid http/https responses
-         if (event.request.url.startsWith('http') && event.request.method === 'GET' && networkResponse.status === 200) {
-             const responseToCache = networkResponse.clone();
-             caches.open(CACHE_NAME).then((cache) => {
-                 cache.put(event.request, responseToCache);
-             });
-         }
-         return networkResponse;
+    caches.match(event.request).then((cachedResponse) => {
+      // Return cached response if found
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // Otherwise fetch from network
+      return fetch(event.request).then((networkResponse) => {
+        // Check for valid response
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
+        }
+
+        // Cache the new asset for next time
+        if (event.request.url.startsWith('http') && event.request.method === 'GET') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+        }
+
+        return networkResponse;
+      }).catch(err => {
+         // Network failed and not in cache. 
+         // For images, we could return a placeholder here if we wanted.
+         console.error('Fetch failed for asset:', event.request.url);
       });
     })
   );
