@@ -1,0 +1,17 @@
+
+{
+  "name": "Vscode",
+  "short_name": "Vscode",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#007acc",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://images.icon-icons.com/3660/PNG/512/visual_studio_code_logo_microsoft_vs_icon_228486.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
