@@ -2,10 +2,10 @@
 {
   "name": "Vscode Mobile",
   "short_name": "Vscode",
-  "start_url": "./index.html",
+  "start_url": "https://vscode-psi-three.vercel.app/",
   "display": "standalone",
-  "background_color": "#1e1e1e",
-  "theme_color": "#007acc",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "description": "Mobile Code Editor",
   "icons": [
