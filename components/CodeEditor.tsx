@@ -8,7 +8,7 @@ if (typeof window !== 'undefined' && Prism.languages.markup) {
     Prism.languages.html = Prism.languages.markup;
 }
 
-import { HTML_TAGS, CSS_PROPS, JS_KEYWORDS } from '../constants';
+import { HTML_TAGS, HTML_ATTRIBUTES, CSS_PROPS, JS_KEYWORDS } from '../constants';
 import { Suggestion, EditorSettings } from '../types';
 import { Bot } from 'lucide-react'; 
 import { completeCode } from '../services/geminiService';
@@ -225,7 +225,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     const currentWord = words[words.length - 1];
 
     if (currentWord.length > 0) {
+        let source: Suggestion[] = [];
+        
         if (language === 'html') {
+            // Emmet Check
             const potentialAbbr = extractAbbreviation(textBeforeCursor);
             if (potentialAbbr && potentialAbbr.length > 0) {
                 const emmetResult = expandAbbreviation(potentialAbbr);
@@ -233,12 +236,32 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                      newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet' });
                 }
             }
+
+            // Context Aware Suggestions (Attributes vs Tags)
+            const lastOpenBracket = textBeforeCursor.lastIndexOf('<');
+            const lastCloseBracket = textBeforeCursor.lastIndexOf('>');
+            
+            // If we are definitely inside a tag (open > close)
+            if (lastOpenBracket > lastCloseBracket) {
+                const tagContent = textBeforeCursor.slice(lastOpenBracket + 1);
+                // If there is a space, we are likely typing attributes
+                if (tagContent.includes(' ')) {
+                    source = HTML_ATTRIBUTES;
+                } else {
+                    // Still typing the tag name
+                    source = HTML_TAGS;
+                }
+            } else {
+                // Not inside a tag, suggest tags
+                source = HTML_TAGS;
+            }
         }
-        let source: Suggestion[] = [];
-        if (language === 'html') source = HTML_TAGS;
-        if (language === 'css') source = CSS_PROPS;
-        if (language === 'javascript') source = JS_KEYWORDS;
-        const matches = source.filter(s => s.label.toLowerCase().startsWith(currentWord.toLowerCase()));
+        else if (language === 'css') source = CSS_PROPS;
+        else if (language === 'javascript') source = JS_KEYWORDS;
+        
+        // Use 'includes' instead of 'startsWith' for fuzzy matching
+        const matches = source.filter(s => s.label.toLowerCase().includes(currentWord.toLowerCase()));
+        
         matches.forEach(m => { if (!newSuggestions.find(s => s.label === m.label)) newSuggestions.push(m); });
     }
 
@@ -293,6 +316,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     
     before = val.substring(0, cursorPos - charsToDelete);
     after = val.substring(cursorPos);
+    
+    // Fix: If we are inserting a full tag like <a...> and the user already typed <a, remove the duplicate <
+    // However, since we are doing replacements based on word boundaries, we need to be careful.
+    // Logic: If insertion starts with '<' and text before ends with '<', remove one '<'.
     if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
