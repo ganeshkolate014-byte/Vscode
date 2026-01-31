@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Undo, Redo, ArrowRightFromLine, Sparkles, Loader2, AlignLeft, Palette } from 'lucide-react';
+import { Undo, Redo, ArrowRightFromLine, AlignLeft, Palette } from 'lucide-react';
 import { ColorPickerModal } from './ColorPickerModal';
 
 interface MobileToolbarProps {
@@ -9,29 +9,18 @@ interface MobileToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   onFormat: () => void;
-  onAiTrigger: () => void;
-  isAiLoading: boolean;
 }
 
 const SYMBOLS = ['<', '>', '/', '{', '}', '(', ')', '[', ']', '=', '"', "'", '`', ';', ':', '!', '-', '_', '$', '*', '.', ','];
 
-export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, onUndo, onRedo, onFormat, onAiTrigger, isAiLoading }) => {
+export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, onUndo, onRedo, onFormat }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
 
   return (
     <>
         <div className="w-full h-12 bg-vscode-activity border-t border-vscode-border flex items-center overflow-x-auto no-scrollbar touch-pan-x z-40 select-none shadow-lg">
         <div className="flex px-2 gap-2 h-full items-center">
-            {/* AI Action */}
-            <button 
-            onMouseDown={(e) => { e.preventDefault(); onAiTrigger(); }} 
-            className="h-8 px-3 bg-purple-900/50 border border-purple-500 rounded text-purple-200 flex items-center justify-center hover:bg-purple-800 transition-colors"
-            >
-                {isAiLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            </button>
-
-            <div className="w-px h-6 bg-vscode-border mx-1" />
-
+            
             {/* Format Action */}
             <button 
             onMouseDown={(e) => { e.preventDefault(); onFormat(); }} 
@@ -56,6 +45,9 @@ export const MobileToolbar: React.FC<MobileToolbarProps> = ({ onInsert, onTab, o
             </button>
             <button onMouseDown={(e) => { e.preventDefault(); onUndo(); }} className="h-8 px-3 bg-vscode-input rounded text-vscode-fg flex items-center justify-center hover:bg-vscode-accent active:bg-vscode-accent transition-colors">
                 <Undo size={16} />
+            </button>
+            <button onMouseDown={(e) => { e.preventDefault(); onRedo(); }} className="h-8 px-3 bg-vscode-input rounded text-vscode-fg flex items-center justify-center hover:bg-vscode-accent active:bg-vscode-accent transition-colors">
+                <Redo size={16} />
             </button>
             
             <div className="w-px h-6 bg-vscode-border mx-1" />

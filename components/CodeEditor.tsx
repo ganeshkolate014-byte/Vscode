@@ -10,8 +10,6 @@ if (typeof window !== 'undefined' && Prism.languages.markup) {
 
 import { HTML_TAGS, HTML_ATTRIBUTES, CSS_PROPS, JS_KEYWORDS } from '../constants';
 import { Suggestion, EditorSettings } from '../types';
-import { Bot } from 'lucide-react'; 
-import { completeCode } from '../services/geminiService';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { formatCode } from '../services/formattingService';
 import { MobileToolbar } from './MobileToolbar';
@@ -59,9 +57,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const nextCursorPosRef = useRef<number | null>(null); 
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [autoSuggestTimer, setAutoSuggestTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
-  const activeRequestRef = useRef<number>(0);
   
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
@@ -210,10 +205,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     onChange(val);
-    activeRequestRef.current++;
     
-    if (autoSuggestTimer) clearTimeout(autoSuggestTimer);
-
     const cursorPos = e.target.selectionStart;
     const textBeforeCursor = val.slice(0, cursorPos);
     
@@ -272,28 +264,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         setSelectedIdx(0);
     } else {
         setSuggestions([]);
-        if (!readOnly && val.trim().length > 10) {
-            const timer = setTimeout(() => triggerAiSuggestion(val, cursorPos), 1500);
-            setAutoSuggestTimer(timer);
-        }
     }
-  };
-
-  const triggerAiSuggestion = async (currentVal: string, cursor: number) => {
-      const requestId = activeRequestRef.current;
-      if (textareaRef.current?.selectionStart !== cursor) return;
-
-      setIsAiLoading(true);
-      const textBefore = currentVal.slice(0, cursor);
-      try {
-        const completion = await completeCode(textBefore, language);
-        if (requestId !== activeRequestRef.current) return;
-        if (completion && completion.trim().length > 0) {
-            setSuggestions([{ label: "AI Suggestion", value: completion, type: 'snippet', detail: 'Gemini' }]);
-            updateCursorPosition();
-        }
-      } catch (e) { } 
-      finally { if (requestId === activeRequestRef.current) setIsAiLoading(false); }
   };
 
   const insertSuggestion = (suggestion: Suggestion) => {
@@ -309,8 +280,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     let charsToDelete = 0;
     if (suggestion.type === 'emmet') {
          charsToDelete = extractAbbreviation(textBeforeCursor).length;
-    } else if (suggestion.label === 'AI Suggestion') {
-         charsToDelete = 0;
     } else {
         const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
         charsToDelete = words[words.length - 1].length;
@@ -319,9 +288,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     before = val.substring(0, cursorPos - charsToDelete);
     after = val.substring(cursorPos);
     
-    // Fix: If we are inserting a full tag like <a...> and the user already typed <a, remove the duplicate <
-    // However, since we are doing replacements based on word boundaries, we need to be careful.
-    // Logic: If insertion starts with '<' and text before ends with '<', remove one '<'.
     if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
@@ -548,8 +514,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                             className={`flex items-center justify-between px-3 py-1 cursor-pointer font-mono text-sm border-b border-[#333333] last:border-0 ${idx === selectedIdx ? 'bg-[#007acc] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'}`}
                         >
                             <div className="flex items-center gap-2 overflow-hidden">
-                                {s.label === 'AI Suggestion' && <Bot size={12} />}
-                                <span className={`truncate ${idx === selectedIdx ? 'text-white' : s.label === 'AI Suggestion' ? 'text-purple-400' : 'text-blue-400'}`}>
+                                <span className={`truncate ${idx === selectedIdx ? 'text-white' : 'text-blue-400'}`}>
                                     {s.label}
                                 </span>
                             </div>
@@ -589,12 +554,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 }
              }}
              onFormat={handleFormat}
-             onAiTrigger={() => {
-                 if (!textareaRef.current) return;
-                 setIsAiLoading(true);
-                 triggerAiSuggestion(textareaRef.current.value, textareaRef.current.selectionStart);
-             }}
-             isAiLoading={isAiLoading}
            />
        )}
     </div>

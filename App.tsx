@@ -5,7 +5,7 @@ import { FileExplorer } from './components/FileExplorer';
 import { GitPanel } from './components/GitPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { LivePreview } from './components/LivePreview';
-import { FileNode, ChatMessage, RepoConfig, EditorSettings } from './types';
+import { FileNode, RepoConfig, EditorSettings } from './types';
 import { 
   Files, 
   Search, 
@@ -13,11 +13,8 @@ import {
   Play,
   Settings, 
   X, 
-  MessageSquare, 
-  Send, 
   Code2, 
 } from 'lucide-react';
-import { generateCodeHelp } from './services/geminiService';
 
 const initialFiles: FileNode[] = [
   {
@@ -58,9 +55,6 @@ export default function App() {
   const [openFiles, setOpenFiles] = useState<string[]>(['1']); 
   const [activeFileId, setActiveFileId] = useState<string>('1');
   const [activeSideBar, setActiveSideBar] = useState<string | null>('explorer');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [isChatLoading, setIsChatLoading] = useState(false);
   const [debouncedFiles, setDebouncedFiles] = useState<FileNode[]>(files);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -278,18 +272,6 @@ export default function App() {
     });
   };
 
-  const sendChatMessage = async () => {
-    if (!chatInput.trim()) return;
-    const userMsg: ChatMessage = { role: 'user', text: chatInput };
-    setChatMessages(prev => [...prev, userMsg]);
-    setChatInput('');
-    setIsChatLoading(true);
-    const context = activeFile ? `Active File: ${activeFile.name}\n${activeFile.content}` : 'No active file.';
-    const response = await generateCodeHelp(userMsg.text, context);
-    setChatMessages(prev => [...prev, { role: 'model', text: response }]);
-    setIsChatLoading(false);
-  };
-  
   const findActiveNode = (nodes: FileNode[], id: string): FileNode | undefined => {
       for (const node of nodes) {
           if (node.id === id) return node;
@@ -338,14 +320,13 @@ export default function App() {
             <ActivityIcon icon={<Files size={24} />} active={activeSideBar === 'explorer'} onClick={() => setActiveSideBar(activeSideBar === 'explorer' ? null : 'explorer')} />
             <ActivityIcon icon={<Search size={24} />} active={activeSideBar === 'search'} onClick={() => setActiveSideBar(activeSideBar === 'search' ? null : 'search')} />
             <ActivityIcon icon={<GitGraph size={24} />} active={activeSideBar === 'git'} onClick={() => setActiveSideBar(activeSideBar === 'git' ? null : 'git')} />
-            <ActivityIcon icon={<MessageSquare size={24} />} active={activeSideBar === 'ai'} onClick={() => setActiveSideBar(activeSideBar === 'ai' ? null : 'ai')} />
             <div className="flex-1" />
             <ActivityIcon icon={<Settings size={24} />} active={false} onClick={() => setShowSettings(true)} />
         </aside>
 
         {/* B. Side Bar */}
         {activeSideBar && (
-          <div className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all duration-300 ease-out ${activeSideBar ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 md:opacity-100 md:translate-x-0'} ${activeSideBar === 'ai' ? 'w-full md:w-80' : 'w-64'} animate-slide-in-left shadow-2xl md:shadow-none`}>
+          <div className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all duration-300 ease-out ${activeSideBar ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 md:opacity-100 md:translate-x-0'} w-64 animate-slide-in-left shadow-2xl md:shadow-none`}>
              
              {activeSideBar === 'explorer' && (
                <FileExplorer 
@@ -368,33 +349,6 @@ export default function App() {
                  repoConfig={repoConfig}
                  onSetRepoConfig={setRepoConfig}
                />
-             )}
-
-             {activeSideBar === 'ai' && (
-                <div className="flex flex-col h-full bg-vscode-sidebar animate-fade-in">
-                    <div className="p-3 uppercase text-xs font-bold text-gray-400 border-b border-vscode-activity flex justify-between">
-                        <span>AI Assistant</span>
-                        <button onClick={() => setActiveSideBar(null)} className="md:hidden"><X size={16}/></button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {chatMessages.map((msg, idx) => (
-                            <div key={idx} className={`p-2 rounded text-sm animate-fade-in ${msg.role === 'user' ? 'bg-vscode-accent text-white self-end ml-4' : 'bg-vscode-input text-gray-200 mr-4'}`}>
-                                {msg.text}
-                            </div>
-                        ))}
-                        {isChatLoading && <div className="text-xs text-gray-500 animate-pulse">Thinking...</div>}
-                    </div>
-                    <div className="p-2 border-t border-vscode-activity flex gap-2">
-                        <input 
-                            className="flex-1 bg-vscode-input border border-vscode-border rounded p-2 text-sm outline-none focus:border-vscode-accent"
-                            placeholder="Ask AI..."
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
-                        />
-                        <button onClick={sendChatMessage} className="p-2 bg-vscode-accent rounded text-white hover:opacity-90 active:scale-95 transition-transform"><Send size={16}/></button>
-                    </div>
-                </div>
              )}
              <div className="md:hidden absolute top-0 -right-12 w-12 h-full" onClick={() => setActiveSideBar(null)} />
           </div>
