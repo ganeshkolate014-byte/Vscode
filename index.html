@@ -9,7 +9,7 @@
     <title>Vscode</title>
     
     <!-- PWA Config -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <link rel="icon" type="image/png" href="https://images.icon-icons.com/3660/PNG/512/visual_studio_code_logo_microsoft_vs_icon_228486.png" />
     <meta name="theme-color" content="#1e1e1e" />
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -263,7 +263,14 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js');
+      // Use relative path to avoid origin mismatch errors in preview environments
+      navigator.serviceWorker.register('./sw.js')
+        .then(registration => {
+          console.log('SW registered: ', registration);
+        })
+        .catch(registrationError => {
+          console.log('SW registration failed: ', registrationError);
+        });
     });
   }
 </script>
