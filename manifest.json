@@ -10,13 +10,13 @@
   "description": "Mobile Code Editor",
   "icons": [
     {
-      "src": "https://icon.icepanel.io/Technology/svg/Visual-Studio-Code-%28VS-Code%29.svg",
+      "src": "https://camo.githubusercontent.com/9e3ef7033f3d523a7cbbb5dc7c0f8298982febbd4a9d47c2d50647e7baffa558/68747470733a2f2f636f64652e76697375616c73747564696f2e636f6d2f6173736574732f757064617465732f315f33352f6c6f676f2d737461626c652e706e67",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://icon.icepanel.io/Technology/svg/Visual-Studio-Code-%28VS-Code%29.svg",
+      "src": "https://camo.githubusercontent.com/9e3ef7033f3d523a7cbbb5dc7c0f8298982febbd4a9d47c2d50647e7baffa558/68747470733a2f2f636f64652e76697375616c73747564696f2e636f6d2f6173736574732f757064617465732f315f33352f6c6f676f2d737461626c652e706e67",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
