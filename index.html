@@ -10,11 +10,11 @@
     
     <!-- PWA Config -->
     <link rel="manifest" href="./manifest.json" />
-    <link rel="icon" type="image/png" href="https://images.icon-icons.com/3660/PNG/512/visual_studio_code_logo_microsoft_vs_icon_228486.png" />
+    <link rel="icon" type="image/png" href="https://res.cloudinary.com/dj5hhott5/image/upload/v1769877704/b6xfwpn7bveiyrd8mmmf.png" />
     <meta name="theme-color" content="#1e1e1e" />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://images.icon-icons.com/3660/PNG/512/visual_studio_code_logo_microsoft_vs_icon_228486.png">
+    <link rel="apple-touch-icon" href="https://res.cloudinary.com/dj5hhott5/image/upload/v1769877704/b6xfwpn7bveiyrd8mmmf.png">
 
     <!-- Tailwind CDN is kept for simplicity. -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -213,6 +213,9 @@
         -webkit-tap-highlight-color: transparent;
       }
 
+      /* React Colorful Styles */
+      .react-colorful{position:relative;display:flex;flex-direction:column;width:100%;min-width:200px;height:200px;user-select:none;cursor:default}.react-colorful__saturation{position:relative;flex-grow:1;border-bottom:12px solid #000;border-radius:8px 8px 0 0;background-image:linear-gradient(to top,#000,rgba(0,0,0,0)),linear-gradient(to right,#fff,rgba(255,255,255,0))}.react-colorful__pointer{position:absolute;z-index:1;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);cursor:grab}.react-colorful__hue{position:relative;height:24px;margin-top:12px;border-radius:0 0 8px 8px;background:linear-gradient(to right,red 0,#ff0 17%,#0f0 33%,#0ff 50%,#00f 67%,#f0f 83%,red 100%)}.react-colorful__hue-pointer{position:absolute;z-index:1;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);cursor:grab}
+
       /* --- ANIMATIONS --- */
       @keyframes slideInLeft {
         from { opacity: 0; transform: translateX(-20px); }
@@ -256,7 +259,8 @@
     "prettier/plugins/postcss": "https://esm.sh/prettier@3.2.5/plugins/postcss",
     "prettier/plugins/estree": "https://esm.sh/prettier@3.2.5/plugins/estree",
     "prettier/plugins/babel": "https://esm.sh/prettier@3.2.5/plugins/babel",
-    "prettier/": "https://esm.sh/prettier@^3.8.1/"
+    "prettier/": "https://esm.sh/prettier@^3.8.1/",
+    "react-colorful": "https://esm.sh/react-colorful@5.6.1?bundle"
   }
 }
 </script>

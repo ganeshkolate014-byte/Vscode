@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'vscode-pwa-v4';
+const CACHE_NAME = 'vscode-pwa-v5';
 const OFFLINE_URL = './index.html';
 
 self.addEventListener('install', (event) => {
@@ -44,15 +44,16 @@ self.addEventListener('fetch', (event) => {
             return response;
           }
           // If server returns 404 or other error, fallback to cache
-          throw new Error('Server returned ' + response.status);
+          // This catch block handles the specific Vercel/Static host 404s
+          return caches.match(OFFLINE_URL).then(cachedResponse => {
+             return cachedResponse || caches.match('./');
+          });
         })
         .catch((error) => {
-          console.log('Navigation fetch failed or returned error, falling back to cache:', error);
+          console.log('Navigation fetch failed, falling back to cache:', error);
           return caches.match(OFFLINE_URL)
             .then((cachedResponse) => {
-               // If index.html is in cache, return it
                if (cachedResponse) return cachedResponse;
-               // Last ditch: try to find anything matching ./
                return caches.match('./');
             });
         })
@@ -86,8 +87,6 @@ self.addEventListener('fetch', (event) => {
 
         return networkResponse;
       }).catch(err => {
-         // Network failed and not in cache. 
-         // For images, we could return a placeholder here if we wanted.
          console.error('Fetch failed for asset:', event.request.url);
       });
     })

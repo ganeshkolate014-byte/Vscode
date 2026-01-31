@@ -2,7 +2,7 @@
 {
   "name": "Vscode Mobile",
   "short_name": "Vscode",
-  "start_url": ".",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#1e1e1e",
   "theme_color": "#007acc",
