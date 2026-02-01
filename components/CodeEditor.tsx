@@ -21,6 +21,7 @@ interface CodeEditorProps {
   onChange: (newCode: string) => void;
   readOnly?: boolean;
   settings?: EditorSettings;
+  contextHtml?: string;
 }
 
 const DEFAULT_SETTINGS: EditorSettings = {
@@ -41,12 +42,67 @@ const getIndentLevel = (line: string) => {
     return Math.floor(spaces / 2);
 };
 
+const extractCssSelectors = (html: string): Suggestion[] => {
+    const suggestions: Suggestion[] = [];
+    const idSet = new Set<string>();
+    const classSet = new Set<string>();
+    const tagSet = new Set<string>();
+
+    const idRegex = /id=["']([^"']+)["']/g;
+    const classRegex = /class=["']([^"']+)["']/g;
+    const tagRegex = /<([a-z0-9-]+)/gi; 
+
+    let match;
+    while ((match = idRegex.exec(html)) !== null) {
+        if(match[1]) idSet.add(match[1]);
+    }
+    while ((match = classRegex.exec(html)) !== null) {
+        if(match[1]) {
+            const classes = match[1].split(/\s+/);
+            classes.forEach(c => c && classSet.add(c));
+        }
+    }
+    while ((match = tagRegex.exec(html)) !== null) {
+        if(match[1]) tagSet.add(match[1]);
+    }
+
+    idSet.forEach(id => {
+        suggestions.push({
+            label: `#${id}`,
+            value: `#${id} {\n\t$0\n}`,
+            type: 'keyword',
+            detail: 'ID Selector'
+        });
+    });
+
+    classSet.forEach(cls => {
+        suggestions.push({
+            label: `.${cls}`,
+            value: `.${cls} {\n\t$0\n}`,
+            type: 'keyword',
+            detail: 'Class Selector'
+        });
+    });
+
+    tagSet.forEach(tag => {
+        suggestions.push({
+            label: tag,
+            value: `${tag} {\n\t$0\n}`,
+            type: 'tag',
+            detail: 'Tag Selector'
+        });
+    });
+
+    return suggestions;
+};
+
 export const CodeEditor: React.FC<CodeEditorProps> = ({ 
     code, 
     language, 
     onChange, 
     readOnly = false,
-    settings = DEFAULT_SETTINGS
+    settings = DEFAULT_SETTINGS,
+    contextHtml
 }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -293,10 +349,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     
     // Suggestion logic...
     let newSuggestions: Suggestion[] = [];
-    const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
+    
+    // Different split regex for CSS to allow . and # in search word
+    let delimiterRegex = /[\s<>{}().,;:'"]+/;
+    if (language === 'css') {
+        delimiterRegex = /[\s{}:;'"()]+/;
+    }
+    const words = textBeforeCursor.split(delimiterRegex);
     const currentWord = words[words.length - 1];
 
-    // Always check for Emmet in HTML regardless of word boundaries defined by regex above
+    // Always check for Emmet in HTML
     if (language === 'html') {
         const potentialAbbr = extractAbbreviation(textBeforeCursor);
         if (potentialAbbr && potentialAbbr.length > 0) {
@@ -330,10 +392,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                 source = HTML_TAGS;
             }
         }
-        else if (language === 'css') source = CSS_PROPS;
+        else if (language === 'css') {
+            source = [...CSS_PROPS];
+            if (contextHtml) {
+                const htmlSuggestions = extractCssSelectors(contextHtml);
+                source = [...htmlSuggestions, ...source];
+            }
+        }
         else if (language === 'javascript') source = JS_KEYWORDS;
         
-        // Use 'includes' instead of 'startsWith' for fuzzy matching
         const matches = source.filter(s => s.label.toLowerCase().includes(currentWord.toLowerCase()));
         
         matches.forEach(m => { if (!newSuggestions.find(s => s.label === m.label)) newSuggestions.push(m); });
@@ -361,14 +428,19 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     if (suggestion.type === 'emmet') {
          charsToDelete = extractAbbreviation(textBeforeCursor).length;
     } else {
-        const words = textBeforeCursor.split(/[\s<>{}().,;:'"]+/);
+        let delimiterRegex = /[\s<>{}().,;:'"]+/;
+        if (language === 'css') {
+            delimiterRegex = /[\s{}:;'"()]+/;
+        }
+        const words = textBeforeCursor.split(delimiterRegex);
         charsToDelete = words[words.length - 1].length;
     }
     
     before = val.substring(0, cursorPos - charsToDelete);
     after = val.substring(cursorPos);
     
-    if (insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
+    // Prevent duplicate < if typing tag
+    if (language === 'html' && insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
     }

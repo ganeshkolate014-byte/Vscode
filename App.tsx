@@ -425,6 +425,7 @@ export default function App() {
                             language={currentActiveNode.language || 'html'} 
                             onChange={handleCodeChange}
                             settings={settings}
+                            contextHtml={currentActiveNode.language === 'css' ? getFileContent('index.html') : undefined}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4 animate-fade-in">
