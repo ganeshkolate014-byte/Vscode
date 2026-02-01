@@ -13,7 +13,7 @@ import { Suggestion, EditorSettings } from '../types';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { formatCode } from '../services/formattingService';
 import { MobileToolbar } from './MobileToolbar';
-import { Search, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { Search, ArrowUp, ArrowDown, X, Wrench, Code2, Hash, Box, Type, LayoutTemplate } from 'lucide-react';
 
 interface CodeEditorProps {
   code: string;
@@ -94,6 +94,23 @@ const extractCssSelectors = (html: string): Suggestion[] => {
     });
 
     return suggestions;
+};
+
+const getSuggestionIcon = (type: Suggestion['type']) => {
+    switch (type) {
+        case 'emmet':
+            return <Wrench size={14} className="text-gray-300" />;
+        case 'snippet':
+            return <LayoutTemplate size={14} className="text-gray-300" />;
+        case 'tag':
+            return <Code2 size={14} className="text-gray-300" />;
+        case 'property':
+            return <Hash size={14} className="text-gray-300" />;
+        case 'keyword':
+            return <Box size={14} className="text-gray-300" />;
+        default:
+            return <Type size={14} className="text-gray-300" />;
+    }
 };
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({ 
@@ -364,7 +381,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         if (potentialAbbr && potentialAbbr.length > 0) {
             const emmetResult = expandAbbreviation(potentialAbbr);
             if (emmetResult) {
-                 newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet' });
+                 newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet Abbreviation' });
             }
         }
     }
@@ -724,12 +741,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                             onClick={() => insertSuggestion(s)}
                             className={`flex items-center justify-between px-3 py-1 cursor-pointer font-mono text-sm border-b border-[#333333] last:border-0 ${idx === selectedIdx ? 'bg-[#007acc] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'}`}
                         >
-                            <div className="flex items-center gap-2 overflow-hidden">
-                                <span className={`truncate ${idx === selectedIdx ? 'text-white' : 'text-blue-400'}`}>
+                            <div className="flex items-center gap-2 overflow-hidden flex-1">
+                                <span className="shrink-0 flex items-center justify-center w-5">
+                                    {getSuggestionIcon(s.type)}
+                                </span>
+                                <span className={`truncate ${idx === selectedIdx ? 'text-white' : 'text-[#9cdcfe]'}`}>
                                     {s.label}
                                 </span>
                             </div>
-                            <span className={`text-xs ml-4 italic shrink-0 ${idx === selectedIdx ? 'text-white opacity-80' : 'text-gray-500'}`}>
+                            <span className={`text-xs ml-2 italic shrink-0 ${idx === selectedIdx ? 'text-white opacity-80' : 'text-gray-500'}`}>
                                 {s.detail ? s.detail.replace(' Abbreviation', '') : s.type}
                             </span>
                         </div>
