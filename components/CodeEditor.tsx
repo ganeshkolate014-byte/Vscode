@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
@@ -8,12 +7,11 @@ if (typeof window !== 'undefined' && Prism.languages.markup) {
     Prism.languages.html = Prism.languages.markup;
 }
 
-import { HTML_TAGS, HTML_ATTRIBUTES, CSS_PROPS, JS_KEYWORDS } from '../constants';
-import { Suggestion, EditorSettings } from '../types';
+import { Suggestion, EditorSettings, FileNode } from '../types';
 import { expandAbbreviation, extractAbbreviation } from '../services/emmetService';
 import { formatCode } from '../services/formattingService';
 import { MobileToolbar } from './MobileToolbar';
-import { Search, ArrowUp, ArrowDown, X, Wrench, Code2, Hash, Box, Type, LayoutTemplate } from 'lucide-react';
+import { Search, ArrowUp, ArrowDown, X, Wrench, Code2, Hash, Box, Type, LayoutTemplate, FileCode } from 'lucide-react';
 
 interface CodeEditorProps {
   code: string;
@@ -22,6 +20,13 @@ interface CodeEditorProps {
   readOnly?: boolean;
   settings?: EditorSettings;
   contextHtml?: string;
+  files?: FileNode[];
+  
+  // Custom Suggestions Props
+  htmlTags: Suggestion[];
+  htmlAttributes: Suggestion[];
+  cssProps: Suggestion[];
+  jsKeywords: Suggestion[];
 }
 
 const DEFAULT_SETTINGS: EditorSettings = {
@@ -96,6 +101,21 @@ const extractCssSelectors = (html: string): Suggestion[] => {
     return suggestions;
 };
 
+// Flatten file tree to relative paths
+const getAllFilePaths = (nodes: FileNode[], prefix = ''): string[] => {
+    let results: string[] = [];
+    nodes.forEach(node => {
+        const path = prefix ? `${prefix}/${node.name}` : node.name;
+        if (node.type === 'file') {
+            results.push(path);
+        }
+        if (node.children) {
+            results = [...results, ...getAllFilePaths(node.children, path)];
+        }
+    });
+    return results;
+};
+
 const getSuggestionIcon = (type: Suggestion['type']) => {
     switch (type) {
         case 'emmet':
@@ -108,6 +128,8 @@ const getSuggestionIcon = (type: Suggestion['type']) => {
             return <Hash size={14} className="text-gray-300" />;
         case 'keyword':
             return <Box size={14} className="text-gray-300" />;
+        case 'file' as any: 
+            return <FileCode size={14} className="text-yellow-400" />;
         default:
             return <Type size={14} className="text-gray-300" />;
     }
@@ -119,7 +141,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     onChange, 
     readOnly = false,
     settings = DEFAULT_SETTINGS,
-    contextHtml
+    contextHtml,
+    files = [],
+    htmlTags,
+    htmlAttributes,
+    cssProps,
+    jsKeywords
 }) => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -142,10 +169,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const historyRef = useRef<string[]>([code]);
   const historyPointer = useRef<number>(0);
 
-  // Reduced line height multiplier from 1.5 to 1.25 for more compact view
   const lineHeight = Math.round(settings.fontSize * 1.25);
 
-  // Measure Character Size when font size changes
+  const allProjectFiles = useMemo(() => getAllFilePaths(files), [files]);
+
   const measureChar = () => {
       const span = document.createElement('span');
       span.style.fontFamily = '"Fira Code", monospace';
@@ -175,7 +202,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       }
       
       const indices: number[] = [];
-      // Case insensitive search
       const lowerCode = code.toLowerCase();
       const lowerTerm = searchTerm.toLowerCase();
       
@@ -187,7 +213,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       
       setSearchMatches(indices);
       
-      // If matches found, jump to the one closest to cursor or first
       if (indices.length > 0) {
           const currentPos = textareaRef.current?.selectionStart || 0;
           const nextMatch = indices.findIndex(idx => idx >= currentPos);
@@ -206,7 +231,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const jumpToMatch = (idx: number) => {
       if (searchMatches.length === 0 || !textareaRef.current || !containerRef.current) return;
       
-      // Handle wrap around
       let newIdx = idx;
       if (newIdx < 0) newIdx = searchMatches.length - 1;
       if (newIdx >= searchMatches.length) newIdx = 0;
@@ -216,27 +240,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       const startPos = searchMatches[newIdx];
       const endPos = startPos + searchTerm.length;
       
-      // Select the text in textarea (Highlights it)
       textareaRef.current.focus();
       textareaRef.current.setSelectionRange(startPos, endPos);
       
-      // Scroll to view
       const textBefore = code.substring(0, startPos);
       const lines = textBefore.split('\n');
       const lineNum = lines.length - 1;
       
-      // Center the match vertically if possible
       const targetScrollTop = (lineNum * lineHeight) - (containerRef.current.clientHeight / 2) + (lineHeight / 2);
       containerRef.current.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
       
-      // Update cursor tracking
       setActiveLineIndex(lineNum);
   };
 
   const handleNextMatch = () => jumpToMatch(currentMatchIdx + 1);
   const handlePrevMatch = () => jumpToMatch(currentMatchIdx - 1);
-
-  // --- End Search Logic ---
 
   const highlightedCode = useMemo(() => {
       try {
@@ -258,7 +276,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     if (!code || charSize.width === 0) return '';
     
     const lines = code.split('\n');
-    const tabWidth = 2 * charSize.width; // Assuming 2 spaces tab
+    const tabWidth = 2 * charSize.width;
     const paths: string[] = [];
     
     const depths = lines.map(line => getIndentLevel(line));
@@ -344,7 +362,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       setActiveLineIndex(row - 1);
 
       const top = (row * lineHeight) - lineHeight + 20; 
-      const left = (col * charSize.width) + (settings.lineNumbers ? 40 : 20); // Adjust for gutter
+      const left = (col * charSize.width) + (settings.lineNumbers ? 40 : 20);
       
       setCursorXY({ top, left });
 
@@ -364,63 +382,127 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     
     updateCursorPosition();
     
-    // Suggestion logic...
     let newSuggestions: Suggestion[] = [];
     
-    // Different split regex for CSS to allow . and # in search word
-    let delimiterRegex = /[\s<>{}().,;:'"]+/;
-    if (language === 'css') {
-        delimiterRegex = /[\s{}:;'"()]+/;
-    }
-    const words = textBeforeCursor.split(delimiterRegex);
-    const currentWord = words[words.length - 1];
+    const attrMatch = textBeforeCursor.match(/(src|href)=["']([^"']*)$/);
 
-    // Always check for Emmet in HTML
-    if (language === 'html') {
-        const potentialAbbr = extractAbbreviation(textBeforeCursor);
-        if (potentialAbbr && potentialAbbr.length > 0) {
-            const emmetResult = expandAbbreviation(potentialAbbr);
-            if (emmetResult) {
-                 newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet Abbreviation' });
-            }
-        }
-    }
+    if (attrMatch) {
+        const attrType = attrMatch[1];
+        const partialPath = attrMatch[2];
+        const lowerPartial = partialPath.toLowerCase();
 
-    if (currentWord.length > 0) {
-        let source: Suggestion[] = [];
+        const validExtensions = attrType === 'src' 
+            ? ['.js', '.png', '.jpg', '.svg', '.mp4', '.mp3'] 
+            : ['.css', '.html'];
         
+        const matchingFiles = allProjectFiles.filter(path => {
+            const hasValidExt = validExtensions.some(ext => path.endsWith(ext));
+            return hasValidExt && path.toLowerCase().startsWith(lowerPartial);
+        });
+
+        matchingFiles.forEach(path => {
+            newSuggestions.push({
+                label: path,
+                value: path,
+                type: 'file' as any,
+                detail: attrType === 'src' ? 'Source File' : 'Link Target'
+            });
+        });
+
+    } else {
+        let delimiterRegex = /[\s<>{}().,;:'"]+/;
+        if (language === 'css') {
+            delimiterRegex = /[\s{}:;'"()]+/;
+        }
+        const words = textBeforeCursor.split(delimiterRegex);
+        const currentWord = words[words.length - 1];
+
+        if (currentWord.length > 1 && language === 'html') {
+             const lowerWord = currentWord.toLowerCase();
+             allProjectFiles.forEach(path => {
+                 if (path.toLowerCase().includes(lowerWord)) {
+                     if (path.endsWith('.js')) {
+                         newSuggestions.push({
+                             label: `script:${path}`,
+                             value: `<script src="${path}"></script>`,
+                             type: 'snippet',
+                             detail: 'Import JS File'
+                         });
+                     }
+                     if (path.endsWith('.css')) {
+                         newSuggestions.push({
+                             label: `link:${path}`,
+                             value: `<link rel="stylesheet" href="${path}" />`,
+                             type: 'snippet',
+                             detail: 'Import CSS File'
+                         });
+                     }
+                 }
+             });
+        }
+
         if (language === 'html') {
-            // Context Aware Suggestions (Attributes vs Tags)
-            const lastOpenBracket = textBeforeCursor.lastIndexOf('<');
-            const lastCloseBracket = textBeforeCursor.lastIndexOf('>');
-            
-            // If we are definitely inside a tag (open > close)
-            if (lastOpenBracket > lastCloseBracket) {
-                const tagContent = textBeforeCursor.slice(lastOpenBracket + 1);
-                // If there is a space, we are likely typing attributes
-                if (tagContent.includes(' ')) {
-                    source = HTML_ATTRIBUTES;
-                } else {
-                    // Still typing the tag name
-                    source = HTML_TAGS;
+            const potentialAbbr = extractAbbreviation(textBeforeCursor);
+            if (potentialAbbr && potentialAbbr.length > 0) {
+                const emmetResult = expandAbbreviation(potentialAbbr);
+                if (emmetResult) {
+                     newSuggestions.push({ label: potentialAbbr, value: emmetResult, type: 'emmet', detail: 'Emmet Abbreviation' });
                 }
-            } else {
-                // Not inside a tag, suggest tags
-                source = HTML_TAGS;
             }
         }
-        else if (language === 'css') {
-            source = [...CSS_PROPS];
-            if (contextHtml) {
-                const htmlSuggestions = extractCssSelectors(contextHtml);
-                source = [...htmlSuggestions, ...source];
+
+        if (currentWord.length > 0) {
+            let source: Suggestion[] = [];
+            
+            if (language === 'html') {
+                const lastOpenBracket = textBeforeCursor.lastIndexOf('<');
+                const lastCloseBracket = textBeforeCursor.lastIndexOf('>');
+                
+                if (lastOpenBracket > lastCloseBracket) {
+                    const tagContent = textBeforeCursor.slice(lastOpenBracket + 1);
+                    if (tagContent.includes(' ')) {
+                        source = htmlAttributes; // Use prop
+                    } else {
+                        source = htmlTags; // Use prop
+                    }
+                } else {
+                    source = htmlTags; // Use prop
+                }
             }
+            else if (language === 'css') {
+                source = [...cssProps]; // Use prop
+                if (contextHtml) {
+                    const htmlSuggestions = extractCssSelectors(contextHtml);
+                    source = [...htmlSuggestions, ...source];
+                }
+            }
+            else if (language === 'javascript') source = jsKeywords; // Use prop
+            
+            // Filter Matches
+            const matches = source.filter(s => s.label.toLowerCase().includes(currentWord.toLowerCase()));
+            
+            // Smart Sorting: Exact -> Starts With -> Alphabetical
+            matches.sort((a, b) => {
+                const curr = currentWord.toLowerCase();
+                const aLab = a.label.toLowerCase();
+                const bLab = b.label.toLowerCase();
+                
+                // 1. Exact matches top
+                if (aLab === curr && bLab !== curr) return -1;
+                if (bLab === curr && aLab !== curr) return 1;
+                
+                // 2. Starts with matches next
+                const aStarts = aLab.startsWith(curr);
+                const bStarts = bLab.startsWith(curr);
+                if (aStarts && !bStarts) return -1;
+                if (!aStarts && bStarts) return 1;
+                
+                // 3. Alphabetical fallback
+                return aLab.localeCompare(bLab);
+            });
+
+            matches.forEach(m => { if (!newSuggestions.find(s => s.label === m.label)) newSuggestions.push(m); });
         }
-        else if (language === 'javascript') source = JS_KEYWORDS;
-        
-        const matches = source.filter(s => s.label.toLowerCase().includes(currentWord.toLowerCase()));
-        
-        matches.forEach(m => { if (!newSuggestions.find(s => s.label === m.label)) newSuggestions.push(m); });
     }
 
     if (newSuggestions.length > 0) {
@@ -442,7 +524,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     let after = "";
     
     let charsToDelete = 0;
-    if (suggestion.type === 'emmet') {
+    
+    const attrMatch = textBeforeCursor.match(/(src|href)=["']([^"']*)$/);
+    
+    if (attrMatch && (suggestion.type === 'file' as any)) {
+         charsToDelete = attrMatch[2].length;
+    } else if (suggestion.type === 'emmet') {
          charsToDelete = extractAbbreviation(textBeforeCursor).length;
     } else {
         let delimiterRegex = /[\s<>{}().,;:'"]+/;
@@ -456,7 +543,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     before = val.substring(0, cursorPos - charsToDelete);
     after = val.substring(cursorPos);
     
-    // Prevent duplicate < if typing tag
     if (language === 'html' && insertion.startsWith('<') && before.trimEnd().endsWith('<')) {
         const lastOpenBracket = before.lastIndexOf('<');
         if (lastOpenBracket !== -1) before = before.substring(0, lastOpenBracket);
@@ -487,7 +573,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Search Shortcut (Ctrl/Cmd + F)
     if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
         e.preventDefault();
         setShowSearch(true);

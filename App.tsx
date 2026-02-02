@@ -1,11 +1,11 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { CodeEditor } from './components/CodeEditor';
 import { FileExplorer } from './components/FileExplorer';
 import { GitPanel } from './components/GitPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { LivePreview } from './components/LivePreview';
-import { FileNode, RepoConfig, EditorSettings } from './types';
+import { FileNode, RepoConfig, EditorSettings, Suggestion } from './types';
+import { HTML_TAGS, HTML_ATTRIBUTES, CSS_PROPS, JS_KEYWORDS } from './constants';
 import { 
   Files, 
   Search, 
@@ -69,6 +69,36 @@ export default function App() {
       return saved ? JSON.parse(saved) : { fontSize: 14, wordWrap: false, lineNumbers: true, autoSave: true };
   });
   const [showSettings, setShowSettings] = useState(false);
+
+  // --- Suggestions State (User Editable) ---
+  const [htmlTags, setHtmlTags] = useState<Suggestion[]>(() => {
+      const saved = localStorage.getItem('dc_html_tags');
+      return saved ? JSON.parse(saved) : HTML_TAGS;
+  });
+  const [htmlAttributes, setHtmlAttributes] = useState<Suggestion[]>(() => {
+      const saved = localStorage.getItem('dc_html_attrs');
+      return saved ? JSON.parse(saved) : HTML_ATTRIBUTES;
+  });
+  const [cssProps, setCssProps] = useState<Suggestion[]>(() => {
+      const saved = localStorage.getItem('dc_css_props');
+      return saved ? JSON.parse(saved) : CSS_PROPS;
+  });
+  const [jsKeywords, setJsKeywords] = useState<Suggestion[]>(() => {
+      const saved = localStorage.getItem('dc_js_keywords');
+      return saved ? JSON.parse(saved) : JS_KEYWORDS;
+  });
+
+  // Persist Suggestions
+  useEffect(() => localStorage.setItem('dc_html_tags', JSON.stringify(htmlTags)), [htmlTags]);
+  useEffect(() => localStorage.setItem('dc_html_attrs', JSON.stringify(htmlAttributes)), [htmlAttributes]);
+  useEffect(() => localStorage.setItem('dc_css_props', JSON.stringify(cssProps)), [cssProps]);
+  useEffect(() => localStorage.setItem('dc_js_keywords', JSON.stringify(jsKeywords)), [jsKeywords]);
+
+  const resetHtmlTags = () => setHtmlTags(HTML_TAGS);
+  const resetHtmlAttributes = () => setHtmlAttributes(HTML_ATTRIBUTES);
+  const resetCssProps = () => setCssProps(CSS_PROPS);
+  const resetJsKeywords = () => setJsKeywords(JS_KEYWORDS);
+  // ------------------------------------------
   
   // Loading State for Top Bar
   const [isGlobalLoading, setIsGlobalLoading] = useState(false);
@@ -78,6 +108,9 @@ export default function App() {
 
   const [viewportHeight, setViewportHeight] = useState('100%');
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
+  
+  // Swipe State
+  const touchStartRef = useRef<number | null>(null);
 
   useEffect(() => {
     let timeoutId: any;
@@ -311,6 +344,28 @@ export default function App() {
       });
   };
 
+  // --- Swipe Logic ---
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartRef.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartRef.current === null) return;
+    const currentX = e.touches[0].clientX;
+    const diff = touchStartRef.current - currentX;
+
+    // Swipe Left to close (diff > 50px)
+    if (diff > 50) { 
+        setActiveSideBar(null);
+        touchStartRef.current = null;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    touchStartRef.current = null;
+  };
+  // -------------------
+
   return (
     <div className="flex flex-col bg-vscode-bg text-vscode-fg font-sans w-full" style={{ height: viewportHeight, overflow: 'hidden' }}>
       
@@ -321,7 +376,28 @@ export default function App() {
         </div>
       )}
 
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} settings={settings} onUpdate={setSettings} />
+      <SettingsModal 
+        isOpen={showSettings} 
+        onClose={() => setShowSettings(false)} 
+        settings={settings} 
+        onUpdate={setSettings} 
+        
+        htmlTags={htmlTags}
+        setHtmlTags={setHtmlTags}
+        resetHtmlTags={resetHtmlTags}
+        
+        htmlAttributes={htmlAttributes}
+        setHtmlAttributes={setHtmlAttributes}
+        resetHtmlAttributes={resetHtmlAttributes}
+        
+        cssProps={cssProps}
+        setCssProps={setCssProps}
+        resetCssProps={resetCssProps}
+        
+        jsKeywords={jsKeywords}
+        setJsKeywords={setJsKeywords}
+        resetJsKeywords={resetJsKeywords}
+      />
 
       {/* 1. Main Workspace Area */}
       <div className="flex-1 flex overflow-hidden relative">
@@ -337,7 +413,12 @@ export default function App() {
 
         {/* B. Side Bar */}
         {activeSideBar && (
-          <div className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all duration-300 ease-out ${activeSideBar ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 md:opacity-100 md:translate-x-0'} w-64 animate-slide-in-left shadow-2xl md:shadow-none`}>
+          <div 
+             onTouchStart={handleTouchStart}
+             onTouchMove={handleTouchMove}
+             onTouchEnd={handleTouchEnd}
+             className={`absolute inset-0 z-30 md:static md:w-64 bg-vscode-sidebar border-r border-black flex flex-col transition-all duration-300 ease-out ${activeSideBar ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 md:opacity-100 md:translate-x-0'} w-64 animate-slide-in-left shadow-2xl md:shadow-none`}
+          >
              
              {activeSideBar === 'explorer' && (
                <FileExplorer 
@@ -425,7 +506,13 @@ export default function App() {
                             language={currentActiveNode.language || 'html'} 
                             onChange={handleCodeChange}
                             settings={settings}
+                            files={files}
                             contextHtml={currentActiveNode.language === 'css' ? getFileContent('index.html') : undefined}
+                            
+                            htmlTags={htmlTags}
+                            htmlAttributes={htmlAttributes}
+                            cssProps={cssProps}
+                            jsKeywords={jsKeywords}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-4 animate-fade-in">

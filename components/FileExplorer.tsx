@@ -36,11 +36,11 @@ interface CreatingState {
 }
 
 const getFileIcon = (filename: string) => {
-  if (filename.endsWith('.html')) return <FileCode size={14} className="text-orange-500" />;
-  if (filename.endsWith('.css')) return <FileType size={14} className="text-blue-400" />;
-  if (filename.endsWith('.js') || filename.endsWith('.ts') || filename.endsWith('.tsx')) return <FileCode size={14} className="text-yellow-400" />;
-  if (filename.endsWith('.json')) return <FileJson size={14} className="text-yellow-200" />;
-  return <FileType size={14} className="text-gray-400" />;
+  if (filename.endsWith('.html')) return <FileCode size={16} className="text-orange-500" />;
+  if (filename.endsWith('.css')) return <FileType size={16} className="text-blue-500" />;
+  if (filename.endsWith('.js') || filename.endsWith('.ts') || filename.endsWith('.tsx') || filename.endsWith('.jsx')) return <FileCode size={16} className="text-yellow-400" />;
+  if (filename.endsWith('.json')) return <FileJson size={16} className="text-yellow-200" />;
+  return <FileType size={16} className="text-gray-400" />;
 };
 
 const FileItem: React.FC<{
@@ -240,26 +240,8 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({ nodes, activeFileId,
 
     const startCreate = (parentId: string | null, type: 'file' | 'folder') => {
         setCreatingState({ parentId, type });
-        // If creating in a folder, make sure it's open
         if (parentId) {
-            // We need to verify if the folder is open, if not, toggle it.
-            // Since we don't have easy access to the node state here without traversal, 
-            // we can optimistically call onToggleFolder if we assume it might be closed. 
-            // Better: The FileItem handles showing children if open. 
-            // Ideally we should ensure it's open. For now, rely on user or simple toggle.
-            // Actually, let's brute force ensure it opens by finding it? 
-            // Simpler: The user usually clicks "New File" on an open folder or we can just trigger toggle.
-            // Let's rely on the user having the folder visible or just toggle it 'on' if possible.
-            // Current App.tsx toggle just inverts. We can't force 'open'.
-            // Workaround: We will let the user open it, OR we modify App.tsx. 
-            // BUT: If the menu is visible, the folder *might* be closed (if we allowed right click context menu). 
-            // Since we use a button IN the row, the row is visible. 
-            // Let's assume the user expands it. 
-            
-            // Actually, let's traverse and force open in App.tsx? No, let's keep it simple.
-            // We can assume if they clicked the action on the folder row, they want to interact with it.
-            // Let's trigger a toggle if it's strictly closed? We don't know state here easily.
-            // We will just invoke the creation state.
+            // Logic to open folder if closed could go here if parentId logic wasn't in FileItem
         }
     };
 
