@@ -121,12 +121,12 @@ const parseSingleNode = (str: string, innerContent: string): string => {
 // Helper to extract the abbreviation from the current line/cursor position
 export const extractAbbreviation = (textBeforeCursor: string): string => {
     // Find the last index of a character that is NOT allowed in emmet
-    // Allowed: a-z, 0-9, #, ., >, *, -, +, $
+    // Allowed: a-z, 0-9, #, ., >, *, -, +, $, !
     // We iterate backwards to find the start of the abbreviation
     let i = textBeforeCursor.length - 1;
     while (i >= 0) {
         const char = textBeforeCursor[i];
-        if (!/[a-zA-Z0-9#.>*\-+$]/.test(char)) {
+        if (!/[a-zA-Z0-9#.>*\-+$!]/.test(char)) {
             break;
         }
         i--;

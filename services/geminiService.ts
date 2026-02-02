@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 const getClient = () => {
@@ -43,11 +44,14 @@ export const completeCode = async (codeBeforeCursor: string, language: string): 
     const modelId = "gemini-3-flash-preview";
 
     const prompt = `
-      You are an autocomplete engine. 
-      Complete the ${language} code at the end of this string.
-      Do not explain. Do not wrap in markdown. Just return the missing code.
+      You are a super-fast code completion engine.
+      Complete the following ${language} code. 
+      Return ONLY the code that should follow the cursor.
+      Do NOT wrap in markdown.
+      Do NOT repeat the code provided.
+      Do NOT add comments.
       
-      Code:
+      Code So Far:
       ${codeBeforeCursor}
     `;
 
@@ -55,15 +59,15 @@ export const completeCode = async (codeBeforeCursor: string, language: string): 
       model: modelId,
       contents: prompt,
       config: {
-        maxOutputTokens: 50, // Keep it very short for autocomplete
-        temperature: 0.2,
-        thinkingConfig: { thinkingBudget: 0 } // Disable thinking for low latency autocomplete
+        maxOutputTokens: 100, // Keep it short for autocomplete
+        temperature: 0.1,
+        thinkingConfig: { thinkingBudget: 0 } 
       }
     });
 
-    // Strip markdown if present, though we asked for direct completion
     let text = response.text || "";
-    text = text.replace(/```[a-z]*\n/g, '').replace(/```/g, '');
+    // Clean up if the model accidentally wrapped it
+    text = text.replace(/```[a-z]*\n?/g, '').replace(/```/g, '');
     return text;
   } catch (error) {
     console.error(error);
